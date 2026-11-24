@@ -1,0 +1,78 @@
+{
+  "title": "Ясная каперская диорама",
+  "text": "Гранёные корпуса, яркие паруса фракций и чёткие белые ленты ветра.",
+  "palette": [
+    "#184e77",
+    "#34a0a4",
+    "#9e6b43",
+    "#f5efe2",
+    "#d93829"
+  ],
+  "tags": [
+    "3D",
+    "low-poly",
+    "readable"
+  ],
+  "items": [
+    {
+      "file": "steam-56d88179.jpg",
+      "url": "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/1172620/ss_ec623c77d75dfa098c622b547b1ab21ad4cae0a8.1920x1080.jpg?t=1793617680",
+      "page": "https://store.steampowered.com/app/1172620/",
+      "title": "Sea of Thieves: 2026 Edition — screenshot 1",
+      "credit": "Rare Ltd",
+      "license": "© Rare Ltd — moodboard only",
+      "api": "steam",
+      "query": "Sea of Thieves: 2026 Edition",
+      "generated": false,
+      "note": "",
+      "w": 1918,
+      "h": 1080,
+      "sha1": "56d88179a0197e528451e8b3f078d79a21eec8c4"
+    },
+    {
+      "file": "steam-0a2ca824.jpg",
+      "url": "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/1172620/275d2128c1f2c285341b2915c8d2b6d1a9a2ee4c/ss_275d2128c1f2c285341b2915c8d2b6d1a9a2ee4c.1920x1080.jpg?t=1793617680",
+      "page": "https://store.steampowered.com/app/1172620/",
+      "title": "Sea of Thieves: 2026 Edition — screenshot 2",
+      "credit": "Rare Ltd",
+      "license": "© Rare Ltd — moodboard only",
+      "api": "steam",
+      "query": "Sea of Thieves: 2026 Edition",
+      "generated": false,
+      "note": "",
+      "w": 1920,
+      "h": 1080,
+      "sha1": "0a2ca824bf00778fb4dd3401a3528967c2bd3ee4"
+    },
+    {
+      "file": "steam-87ef7a7c.jpg",
+      "url": "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/1172620/ef387b7eec7008a3706e8bb254a025680cbfb54d/ss_ef387b7eec7008a3706e8bb254a025680cbfb54d.1920x1080.jpg?t=1793617680",
+      "page": "https://store.steampowered.com/app/1172620/",
+      "title": "Sea of Thieves: 2026 Edition — screenshot 3",
+      "credit": "Rare Ltd",
+      "license": "© Rare Ltd — moodboard only",
+      "api": "steam",
+      "query": "Sea of Thieves: 2026 Edition",
+      "generated": false,
+      "note": "",
+      "w": 1920,
+      "h": 1080,
+      "sha1": "87ef7a7ca65a477aba931b605dad46970a571fbb"
+    },
+    {
+      "file": "gen-f2153d83.jpg",
+      "url": "",
+      "page": "",
+      "title": "style_stylized_armada_1794647700871",
+      "credit": "image generation",
+      "license": "generated for the project",
+      "api": "generated",
+      "query": "",
+      "generated": true,
+      "note": "concept: faceted low-poly sloop vs frigate on clear turquoise sea",
+      "w": 1376,
+      "h": 768,
+      "sha1": "f2153d83ec162b9ab708895fbc3f5a99970553b8"
+    }
+  ]
+}

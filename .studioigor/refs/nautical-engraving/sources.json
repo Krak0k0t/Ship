@@ -1,0 +1,63 @@
+{
+  "title": "Гравюра и сургучная карта",
+  "text": "Штрихованная тушь на пергаменте, алый сургуч только для метки и залпов.",
+  "palette": [
+    "#efe4ce",
+    "#1a1817",
+    "#8c7355",
+    "#c99a42",
+    "#c83228"
+  ],
+  "tags": [
+    "3D",
+    "shader",
+    "engraving"
+  ],
+  "items": [
+    {
+      "file": "steam-1c23b3a9.jpg",
+      "url": "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/653530/ss_7dd3476ace2170e134141e487f9491d4c9d094f3.1920x1080.jpg?t=1686697594",
+      "page": "https://store.steampowered.com/app/653530/",
+      "title": "Return of the Obra Dinn — screenshot 1",
+      "credit": "Lucas Pope",
+      "license": "© Lucas Pope — moodboard only",
+      "api": "steam",
+      "query": "Return of the Obra Dinn",
+      "generated": false,
+      "note": "",
+      "w": 1600,
+      "h": 900,
+      "sha1": "1c23b3a98c500301bc3c58cec0c147b56e235cf0"
+    },
+    {
+      "file": "steam-f46dcd84.jpg",
+      "url": "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/653530/ss_380dc35237fde7d3863a44270abafc37924d1db4.1920x1080.jpg?t=1686697594",
+      "page": "https://store.steampowered.com/app/653530/",
+      "title": "Return of the Obra Dinn — screenshot 2",
+      "credit": "Lucas Pope",
+      "license": "© Lucas Pope — moodboard only",
+      "api": "steam",
+      "query": "Return of the Obra Dinn",
+      "generated": false,
+      "note": "",
+      "w": 1600,
+      "h": 900,
+      "sha1": "f46dcd84314599a907a45434090283d311a39ae4"
+    },
+    {
+      "file": "gen-01da77e5.jpg",
+      "url": "",
+      "page": "",
+      "title": "style_nautical_engraving_1794647699465",
+      "credit": "image generation",
+      "license": "generated for the project",
+      "api": "generated",
+      "query": "",
+      "generated": true,
+      "note": "concept: parchment copperplate engraving with scarlet wax accents",
+      "w": 1376,
+      "h": 768,
+      "sha1": "01da77e54e8cd520d6ede413eb677faa87cd9c56"
+    }
+  ]
+}

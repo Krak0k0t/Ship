@@ -1,0 +1,63 @@
+{
+  "title": "Штормовой романтизм Айвазовского",
+  "text": "Просвечивающие изумрудные валы, грозовой аспид и один золотой луч.",
+  "palette": [
+    "#1b242b",
+    "#1e5f5e",
+    "#e6dfd1",
+    "#df9e46",
+    "#e0463a"
+  ],
+  "tags": [
+    "3D",
+    "storm",
+    "painterly"
+  ],
+  "items": [
+    {
+      "file": "steam-14cb2d2f.jpg",
+      "url": "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/311310/ss_14cb2d2f0fac90e7bdee07c2bdb569481aca0598.1920x1080.jpg?t=1778047265",
+      "page": "https://store.steampowered.com/app/311310/",
+      "title": "Naval Action — screenshot 1",
+      "credit": "Bermuda Computer Club",
+      "license": "© Bermuda Computer Club — moodboard only",
+      "api": "steam",
+      "query": "Naval Action",
+      "generated": false,
+      "note": "",
+      "w": 1920,
+      "h": 1080,
+      "sha1": "14cb2d2f0fac90e7bdee07c2bdb569481aca0598"
+    },
+    {
+      "file": "steam-b22889de.jpg",
+      "url": "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/311310/ss_b22889de4f35196794cf6c10cfbfcd244e26c774.1920x1080.jpg?t=1778047265",
+      "page": "https://store.steampowered.com/app/311310/",
+      "title": "Naval Action — screenshot 2",
+      "credit": "Bermuda Computer Club",
+      "license": "© Bermuda Computer Club — moodboard only",
+      "api": "steam",
+      "query": "Naval Action",
+      "generated": false,
+      "note": "",
+      "w": 1920,
+      "h": 1080,
+      "sha1": "b22889de4f35196794cf6c10cfbfcd244e26c774"
+    },
+    {
+      "file": "gen-59a5a625.jpg",
+      "url": "",
+      "page": "",
+      "title": "style_aivazovsky_storm_1794647699923",
+      "credit": "image generation",
+      "license": "generated for the project",
+      "api": "generated",
+      "query": "",
+      "generated": true,
+      "note": "concept: storm swells with translucent emerald crests and sunbeam",
+      "w": 1376,
+      "h": 768,
+      "sha1": "59a5a625172499fee8478b6ee03215530beb83e6"
+    }
+  ]
+}

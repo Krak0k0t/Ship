@@ -1,0 +1,93 @@
+{
+  "title": "Золотой закат и солёное дерево",
+  "text": "Заходящее солнце золотит паруса, опасность горит янтарём и алым на бирюзе.",
+  "palette": [
+    "#133142",
+    "#236b78",
+    "#5e3a24",
+    "#e8a64b",
+    "#d63d2e"
+  ],
+  "tags": [
+    "3D",
+    "sunset",
+    "classic"
+  ],
+  "items": [
+    {
+      "file": "steam-bc0185c4.jpg",
+      "url": "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/3920/0000000676.1920x1080.jpg?t=1777585034",
+      "page": "https://store.steampowered.com/app/3920/",
+      "title": "Sid Meier's Pirates! — screenshot 1",
+      "credit": "Firaxis Games",
+      "license": "© Firaxis Games — moodboard only",
+      "api": "steam",
+      "query": "Sid Meier's Pirates!",
+      "generated": false,
+      "note": "",
+      "w": 800,
+      "h": 600,
+      "sha1": "bc0185c4de59d890b6431886047c26beaf862ef8"
+    },
+    {
+      "file": "steam-a67a4661.jpg",
+      "url": "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/3920/0000000677.1920x1080.jpg?t=1777585034",
+      "page": "https://store.steampowered.com/app/3920/",
+      "title": "Sid Meier's Pirates! — screenshot 2",
+      "credit": "Firaxis Games",
+      "license": "© Firaxis Games — moodboard only",
+      "api": "steam",
+      "query": "Sid Meier's Pirates!",
+      "generated": false,
+      "note": "",
+      "w": 800,
+      "h": 600,
+      "sha1": "a67a4661874996f49b2f8923689454f474b0b07d"
+    },
+    {
+      "file": "steam-82453694.jpg",
+      "url": "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/242050/ss_82453694854272967e6f7c2147ff86f62a2b1408.1920x1080.jpg?t=1777052740",
+      "page": "https://store.steampowered.com/app/242050/",
+      "title": "Assassin’s Creed® IV Black Flag™ — screenshot 1",
+      "credit": "Ubisoft Montreal",
+      "license": "© Ubisoft Montreal — moodboard only",
+      "api": "steam",
+      "query": "Assassin’s Creed® IV Black Flag™",
+      "generated": false,
+      "note": "",
+      "w": 1920,
+      "h": 1080,
+      "sha1": "82453694854272967e6f7c2147ff86f62a2b1408"
+    },
+    {
+      "file": "steam-afb6f91b.jpg",
+      "url": "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/242050/ss_afb6f91bc96b51d0684bb4cbec4389b49dcb96db.1920x1080.jpg?t=1777052740",
+      "page": "https://store.steampowered.com/app/242050/",
+      "title": "Assassin’s Creed® IV Black Flag™ — screenshot 2",
+      "credit": "Ubisoft Montreal",
+      "license": "© Ubisoft Montreal — moodboard only",
+      "api": "steam",
+      "query": "Assassin’s Creed® IV Black Flag™",
+      "generated": false,
+      "note": "",
+      "w": 1920,
+      "h": 1080,
+      "sha1": "afb6f91bc96b51d0684bb4cbec4389b49dcb96db"
+    },
+    {
+      "file": "gen-40d7e15d.jpg",
+      "url": "",
+      "page": "",
+      "title": "style_sun_bleached_caribbean_1794647699163",
+      "credit": "image generation",
+      "license": "generated for the project",
+      "api": "generated",
+      "query": "",
+      "generated": true,
+      "note": "concept: golden sunset broadside on turquoise water",
+      "w": 1376,
+      "h": 768,
+      "sha1": "40d7e15d633cab70cf592ca68391a8c2a18fe5af"
+    }
+  ]
+}
