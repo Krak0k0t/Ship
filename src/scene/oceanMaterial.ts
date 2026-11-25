@@ -54,6 +54,8 @@ export interface OceanUniforms {
   uWhirlpools: { value: THREE.Vector3[] };
   uRogueWave: { value: THREE.Vector4 };
   uRogueWaveDir: { value: THREE.Vector2 };
+  uBiolumIntensity: { value: number };
+  uLightningFlash: { value: number };
 }
 
 export interface OceanSurfaceController {
@@ -70,6 +72,8 @@ export interface OceanSurfaceController {
     windAngle: number,
     stormIntensity: number,
     rogueWave?: RogueWaveState | null,
+    biolumIntensity?: number,
+    lightningFlash?: number,
   ) => void;
 }
 
@@ -148,6 +152,8 @@ uniform vec3 uSunGlintColor;
 uniform vec3 uFoamColor;
 uniform vec3 uHeadlands[4];
 uniform vec3 uWhirlpools[3];
+uniform float uBiolumIntensity;
+uniform float uLightningFlash;
 varying vec3 vOceanWorldPos;
 varying vec2 vOceanMacroSlope;
 varying float vOceanWaveNorm;
@@ -219,6 +225,8 @@ export function createOceanMaterial(): OceanSurfaceController {
     },
     uRogueWave: { value: new THREE.Vector4(0, 0, 0, 0) },
     uRogueWaveDir: { value: new THREE.Vector2(1, 0) },
+    uBiolumIntensity: { value: 0 },
+    uLightningFlash: { value: 0 },
   };
 
   const material = new THREE.MeshStandardMaterial({
@@ -228,7 +236,7 @@ export function createOceanMaterial(): OceanSurfaceController {
     envMapIntensity: 0.04,
   });
 
-  material.customProgramCacheKey = () => 'twilight-corsair-ocean-v6';
+  material.customProgramCacheKey = () => 'twilight-corsair-ocean-v7';
 
   material.onBeforeCompile = (shader) => {
     Object.assign(shader.uniforms, uniforms);
@@ -373,6 +381,17 @@ export function createOceanMaterial(): OceanSurfaceController {
 
         // Subtle fresnel twilight rim
         totalEmissiveRadiance += uSkyReflectColor * oceanFresnel * 0.045;
+
+        // Bioluminescent plankton crests & storm lightning sheet illumination
+        if (uBiolumIntensity > 0.01) {
+          float bioMask = clamp(crestFoam * 1.15 + vortexFoam * 0.9 + totalFoam * 0.35, 0.0, 1.0);
+          float bioPulse = 0.65 + 0.35 * sin(uTime * 3.1 + foamNoise1 * 5.0);
+          totalEmissiveRadiance += vec3(0.14, 0.88, 0.84) * bioMask * bioPulse * uBiolumIntensity * 0.42;
+        }
+        if (uLightningFlash > 0.01) {
+          float sheet = (0.35 + oceanFresnel * 0.85 + totalFoam * 0.4) * uLightningFlash;
+          totalEmissiveRadiance += vec3(0.68, 0.84, 1.0) * sheet * 0.36;
+        }
         `,
       );
   };
@@ -414,11 +433,21 @@ export function createOceanMaterial(): OceanSurfaceController {
         }
       }
     },
-    update(time, waveHeight, windAngle, stormIntensity, rogueWave) {
+    update(
+      time,
+      waveHeight,
+      windAngle,
+      stormIntensity,
+      rogueWave,
+      biolumIntensity = 0,
+      lightningFlash = 0,
+    ) {
       uniforms.uTime.value = time;
       uniforms.uWaveHeight.value = waveHeight;
       uniforms.uWindDir.value.set(-Math.sin(windAngle), Math.cos(windAngle)).normalize();
       uniforms.uStormIntensity.value = Math.max(0, Math.min(1, stormIntensity));
+      uniforms.uBiolumIntensity.value = Math.max(0, Math.min(1, biolumIntensity));
+      uniforms.uLightningFlash.value = Math.max(0, Math.min(1, lightningFlash));
       if (rogueWave && rogueWave.active) {
         uniforms.uRogueWave.value.set(
           rogueWave.x,

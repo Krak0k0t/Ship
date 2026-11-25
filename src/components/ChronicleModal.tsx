@@ -28,13 +28,18 @@ import {
   countUnlockedLoreEntries,
   isSeaLoreUnlocked,
 } from '../game/lore';
+import {
+  CAPTAIN_LOG_IDS,
+  OFFICER_LOYALTY_SPECS,
+  type CaptainLogId,
+} from '../game/voyageSystems';
 import { applySpecularVarsToTarget } from '../game/uiEffects';
-import { getExtraT } from '../i18n/extraTranslations';
+import { getExtraT, type ExtraTranslationKeys } from '../i18n/extraTranslations';
 import { TRANSLATIONS, getLanguageMeta, type LanguageCode } from '../i18n/translations';
 import { AstrolabeCrest } from './AstrolabeCrest';
 import { BrassCorners } from './BrassCorners';
 
-type ChronicleTab = 'world' | 'crew' | 'relics' | 'bestiary' | 'medals';
+type ChronicleTab = 'world' | 'crew' | 'relics' | 'bestiary' | 'medals' | 'log';
 
 interface ChronicleModalProps {
   language: LanguageCode;
@@ -60,6 +65,34 @@ export const ChronicleModal: React.FC<ChronicleModalProps> = ({
   const [tab, setTab] = useState<ChronicleTab>('world');
   const unlockedEntries = countUnlockedLoreEntries(profile);
   const unlockedMedals = getUnlockedMedals(profile);
+
+  const unlockedLogs = profile.unlockedLogs ?? ['logFirstSail'];
+  const completedLoyalty = profile.completedLoyalty ?? [];
+
+  const resolveText = (key: string): string =>
+    (t as unknown as Record<string, string>)[key] ??
+    (et as unknown as Record<string, string>)[key] ??
+    key;
+
+  const loyaltyLabelByOfficer: Record<OfficerId, string> = {
+    gunner: et.loyaltyGunner,
+    bosun: et.loyaltyBosun,
+    navigator: et.loyaltyNav,
+    surgeon: et.loyaltySurgeon,
+  };
+
+  const logKeysById: Record<
+    CaptainLogId,
+    { titleKey: keyof ExtraTranslationKeys; bodyKey: keyof ExtraTranslationKeys }
+  > = {
+    logFirstSail: { titleKey: 'logFirstSailTitle', bodyKey: 'logFirstSailBody' },
+    logCrimsonFang: { titleKey: 'logCrimsonFangTitle', bodyKey: 'logCrimsonFangBody' },
+    logAshenPyre: { titleKey: 'logAshenPyreTitle', bodyKey: 'logAshenPyreBody' },
+    logBlackSovereign: { titleKey: 'logBlackSovereignTitle', bodyKey: 'logBlackSovereignBody' },
+    logKrakenSlain: { titleKey: 'logKrakenSlainTitle', bodyKey: 'logKrakenSlainBody' },
+    logBottleTreasure: { titleKey: 'logBottleTreasureTitle', bodyKey: 'logBottleTreasureBody' },
+    logConvoyEscorted: { titleKey: 'logConvoyEscortedTitle', bodyKey: 'logConvoyEscortedBody' },
+  };
 
   const bestiaryEntries: Record<BestiaryId, { name: string; lore: string; weak: string }> = {
     brig: { name: et.bestiaryBrigName, lore: et.bestiaryBrigLore, weak: et.bestiaryBrigWeak },
@@ -211,6 +244,24 @@ export const ChronicleModal: React.FC<ChronicleModalProps> = ({
               {unlockedMedals.length}/{CAPTAIN_MEDAL_IDS.length}
             </span>
           </button>
+
+          <button
+            type="button"
+            data-testid="chronicle-tab-log"
+            aria-pressed={tab === 'log'}
+            onClick={() => setTab('log')}
+            className={`btn-premium flex cursor-pointer items-center gap-1.5 rounded-xl border px-3.5 py-2 text-xs font-extrabold tracking-[0.06em] uppercase transition-all ${
+              tab === 'log'
+                ? 'border-[#FFD27D]/85 bg-gradient-to-b from-[#9E241C]/90 to-[#471416]/90 text-[#FFF8EA] glow-crimson'
+                : 'border-[#F4C97A]/25 bg-[#0A1026]/85 text-[#D8D0C2] hover:border-[#F4C97A]/55 hover:text-white'
+            }`}
+          >
+            <BookOpen className="h-3.5 w-3.5 text-[#FFD27D]" />
+            <span>{et.chronicleTabLog}</span>
+            <span className="font-mono-num rounded bg-[#070B19]/70 px-1.5 py-0.5 text-[10px] text-[#FFD27D]">
+              {unlockedLogs.length}/{CAPTAIN_LOG_IDS.length}
+            </span>
+          </button>
         </div>
 
         {/* Tab 1: World & Seas */}
@@ -277,6 +328,17 @@ export const ChronicleModal: React.FC<ChronicleModalProps> = ({
           <div className="relative z-10 grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-4">
             {OFFICER_DOSSIERS.map((officer) => {
               const recruited = profile.hiredOfficers.includes(officer.officerId);
+              const spec = OFFICER_LOYALTY_SPECS[officer.officerId];
+              const progressVal =
+                spec.targetType === 'sunk'
+                  ? profile.totalSunk
+                  : spec.targetType === 'boarded'
+                    ? profile.totalBoarded
+                    : spec.targetType === 'miles'
+                      ? Math.floor(profile.totalMiles)
+                      : profile.completedSecrets.length;
+              const sworn = completedLoyalty.includes(officer.officerId) || progressVal >= spec.targetValue;
+              const pct = Math.min(100, Math.round((progressVal / Math.max(1, spec.targetValue)) * 100));
               return (
                 <div
                   key={officer.officerId}
@@ -295,18 +357,43 @@ export const ChronicleModal: React.FC<ChronicleModalProps> = ({
                         </div>
                         <div>
                           <h3 className="text-sm font-black text-[#FFF8EA]">
-                            {t[officer.nameKey]}
+                            {resolveText(officer.nameKey)}
                           </h3>
                           <p className="text-[11px] font-bold text-[#8CE2FF]">
-                            {t[officer.descKey]}
+                            {resolveText(officer.descKey)}
                           </p>
                         </div>
                       </div>
                     </div>
 
                     <p className="font-prose text-xs leading-relaxed text-[#E2D9C8]/92">
-                      {t[officer.loreKey]}
+                      {resolveText(officer.loreKey)}
                     </p>
+
+                    <div
+                      data-testid={`chronicle-loyalty-${officer.officerId}`}
+                      className="mt-3 rounded-lg border border-[#F4C97A]/20 bg-[#070B18]/80 p-2.5"
+                    >
+                      <div className="mb-1 flex items-center justify-between gap-1 text-[10px] font-extrabold tracking-wide uppercase">
+                        <span className="text-[#F4C97A]/85">{et.loyaltyLabel}</span>
+                        <span className={`font-mono-num ${sworn ? 'text-[#FFE082]' : 'text-[#8CE2FF]'}`}>
+                          {sworn ? et.loyaltyDone : `${Math.min(progressVal, spec.targetValue)}/${spec.targetValue}`}
+                        </span>
+                      </div>
+                      <p className="mb-1.5 text-[11px] font-semibold text-[#D8D0C2]">
+                        {loyaltyLabelByOfficer[officer.officerId]}
+                      </p>
+                      <div className="h-1.5 w-full overflow-hidden rounded-full bg-[#0D142C]">
+                        <div
+                          className={`h-full rounded-full transition-all duration-300 ${
+                            sworn
+                              ? 'bg-gradient-to-r from-[#E09B2D] to-[#FFE082]'
+                              : 'bg-gradient-to-r from-[#3D76C4] to-[#7BE0FF]'
+                          }`}
+                          style={{ width: `${pct}%` }}
+                        />
+                      </div>
+                    </div>
                   </div>
 
                   <div className="mt-3 flex items-center justify-end">
@@ -459,6 +546,50 @@ export const ChronicleModal: React.FC<ChronicleModalProps> = ({
                     >
                       {earned ? t.medalUnlockedBadge : t.medalLockedBadge}
                     </span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {/* Tab 6: Captain's Log */}
+        {tab === 'log' && (
+          <div className="relative z-10 grid grid-cols-1 gap-3 md:grid-cols-2">
+            {CAPTAIN_LOG_IDS.map((logId, idx) => {
+              const unlocked = unlockedLogs.includes(logId);
+              const keys = logKeysById[logId];
+              return (
+                <div
+                  key={logId}
+                  data-testid={`chronicle-log-card-${logId}`}
+                  className={`flex flex-col justify-between rounded-xl border p-4 ${
+                    unlocked
+                      ? 'border-[#FFD27D]/45 bg-gradient-to-br from-[#211C12]/88 via-[#111936]/90 to-[#080C1C]/95'
+                      : 'border-white/12 bg-[#070B17]/85 opacity-80'
+                  }`}
+                >
+                  <div>
+                    <div className="mb-1.5 flex items-center justify-between gap-2">
+                      <span className="text-[10px] font-extrabold tracking-[0.14em] text-[#F4C97A]/80 uppercase">
+                        0{idx + 1}
+                      </span>
+                      {unlocked ? (
+                        <CheckCircle2 className="h-3.5 w-3.5 text-[#FFD27D]" />
+                      ) : (
+                        <Lock className="h-3.5 w-3.5 text-[#9AA5BE]" />
+                      )}
+                    </div>
+                    <h3 className="font-display mb-1.5 text-sm font-extrabold text-[#FFF8EA]">
+                      {unlocked ? et[keys.titleKey] : `0${idx + 1} · ${t.medalLockedBadge}`}
+                    </h3>
+                    <p
+                      className={`font-prose text-xs leading-relaxed ${
+                        unlocked ? 'text-[#EFE4CA]/95' : 'italic text-[#A4B0C8]/80'
+                      }`}
+                    >
+                      {unlocked ? et[keys.bodyKey] : t.chronicleRelicSealed}
+                    </p>
                   </div>
                 </div>
               );

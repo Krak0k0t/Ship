@@ -26,6 +26,11 @@ import {
   type FigureheadId,
   type ShipClassId,
 } from './shipClasses';
+import {
+  CAPTAIN_LOG_IDS,
+  OFFICER_LOYALTY_SPECS,
+  type CaptainLogId,
+} from './voyageSystems';
 
 export type ActId = 1 | 2 | 3;
 export type PlayModeId = 'campaign' | 'endless';
@@ -151,6 +156,8 @@ export interface CaptainProfile {
   bestComboStreak: number;
   campaignCleared: boolean;
   completedSecrets: SecretQuestId[];
+  unlockedLogs: CaptainLogId[];
+  completedLoyalty: OfficerId[];
 }
 
 export interface BiomePalette {
@@ -614,6 +621,8 @@ export function createDefaultProfile(): CaptainProfile {
     bestComboStreak: 0,
     campaignCleared: false,
     completedSecrets: [],
+    unlockedLogs: ['logFirstSail'],
+    completedLoyalty: [],
   };
 }
 
@@ -802,8 +811,45 @@ export function syncMilestoneCrests(profile: CaptainProfile): CaptainProfile {
   if (profile.unlockedAct >= 3 || profile.campaignCleared) owned.add('ashen');
   if (profile.campaignCleared || profile.completedSecrets.length >= 5) owned.add('abyssal');
   const ownedCrests = Array.from(owned);
-  if (ownedCrests.length === profile.ownedCrests?.length) return profile;
-  return { ...profile, ownedCrests };
+
+  const loyalty = new Set<OfficerId>(profile.completedLoyalty ?? []);
+  for (const officerId of OFFICER_IDS) {
+    if (!profile.hiredOfficers.includes(officerId)) continue;
+    const spec = OFFICER_LOYALTY_SPECS[officerId];
+    const progress =
+      spec.targetType === 'sunk'
+        ? profile.totalSunk
+        : spec.targetType === 'boarded'
+          ? profile.totalBoarded
+          : spec.targetType === 'miles'
+            ? profile.totalMiles
+            : profile.completedSecrets.length;
+    if (progress >= spec.targetValue) loyalty.add(officerId);
+  }
+  const completedLoyalty = Array.from(loyalty);
+
+  if (
+    ownedCrests.length === profile.ownedCrests?.length &&
+    completedLoyalty.length === (profile.completedLoyalty?.length ?? 0)
+  ) {
+    return profile;
+  }
+  return { ...profile, ownedCrests, completedLoyalty };
+}
+
+export function recordCaptainLog(
+  profile: CaptainProfile,
+  logId: CaptainLogId,
+): { profile: CaptainProfile; newlyUnlocked: boolean } {
+  const existing = profile.unlockedLogs ?? ['logFirstSail'];
+  if (existing.includes(logId)) return { profile, newlyUnlocked: false };
+  return {
+    newlyUnlocked: true,
+    profile: {
+      ...profile,
+      unlockedLogs: [...existing, logId],
+    },
+  };
 }
 
 export function unlockOrEquipCrest(
@@ -965,14 +1011,14 @@ export function applyDefeatProgress(
   bestComboInRun: number,
   bestiaryKillsInRun?: Partial<Record<BestiaryId, number>>,
 ): CaptainProfile {
-  return {
+  return syncMilestoneCrests({
     ...profile,
     totalSunk: profile.totalSunk + Math.max(0, sunkInRun),
     totalBoarded: profile.totalBoarded + Math.max(0, boardedInRun),
     totalMiles: Number((profile.totalMiles + Math.max(0, milesSailed)).toFixed(1)),
     bestComboStreak: Math.max(profile.bestComboStreak, bestComboInRun),
     bestiaryKills: mergeBestiaryKills(profile.bestiaryKills, bestiaryKillsInRun),
-  };
+  });
 }
 
 export function recordSecretCompletion(
@@ -1053,6 +1099,10 @@ function isValidPerkId(v: unknown): v is CaptainPerkId {
     v === 'tempestRider' ||
     v === 'corsairGreed'
   );
+}
+
+function isValidLogId(v: unknown): v is CaptainLogId {
+  return typeof v === 'string' && CAPTAIN_LOG_IDS.includes(v as CaptainLogId);
 }
 
 export function loadCaptainProfile(storage?: MinimalStorage): CaptainProfile {
@@ -1173,6 +1223,12 @@ export function loadCaptainProfile(storage?: MinimalStorage): CaptainProfile {
       campaignCleared: Boolean(parsed.campaignCleared),
       completedSecrets: Array.isArray(parsed.completedSecrets)
         ? Array.from(new Set(parsed.completedSecrets.filter(isValidSecretId)))
+        : [],
+      unlockedLogs: Array.isArray(parsed.unlockedLogs)
+        ? Array.from(new Set<CaptainLogId>(['logFirstSail', ...parsed.unlockedLogs.filter(isValidLogId)]))
+        : ['logFirstSail'],
+      completedLoyalty: Array.isArray(parsed.completedLoyalty)
+        ? Array.from(new Set(parsed.completedLoyalty.filter(isValidOfficerId)))
         : [],
     });
   } catch {

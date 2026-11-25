@@ -28,6 +28,7 @@ import {
   hireOrToggleOfficer,
   loadCaptainProfile,
   purchaseUpgrade,
+  recordCaptainLog,
   recordSecretCompletion,
   resetCaptainProfile,
   saveCaptainProfile,
@@ -42,6 +43,7 @@ import {
   type UpgradeStat,
   type WeatherId,
 } from './game/campaign';
+import type { CaptainLogId } from './game/voyageSystems';
 import { SECRET_QUEST_SPECS, type SecretQuestId } from './game/secrets';
 import {
   DEFAULT_SEA_PARAMS,
@@ -135,6 +137,13 @@ const INITIAL_HUD: HudSnapshot = {
   waypointDistMeters: null,
   surgeonActive: false,
   equippedCrest: 'corsair',
+  activeRelics: [],
+  activeMutators: [],
+  routeChoices: [],
+  mutatorChoices: [],
+  convoyHp: null,
+  convoyMaxHp: null,
+  treasureDistMeters: null,
 };
 
 export function App() {
@@ -287,8 +296,11 @@ export function App() {
     const onKey = (e: KeyboardEvent) => {
       if (document.body.dataset.modalOpen === '1') {
         if (e.code === 'Escape') {
-          if (hud.activeEncounterModal !== null) sceneRef.current?.closeEncounterModal();
-          else if (controlsOpen) setControlsOpen(false);
+          if (hud.activeEncounterModal === 'wreckage' || hud.activeEncounterModal === 'merchant') {
+            sceneRef.current?.closeEncounterModal();
+          } else if (hud.activeEncounterModal !== null) {
+            return;
+          } else if (controlsOpen) setControlsOpen(false);
           else if (chaptersOpen) setChaptersOpen(false);
           else if (harborOpen) setHarborOpen(false);
           else if (secretsOpen) setSecretsOpen(false);
@@ -454,6 +466,23 @@ export function App() {
     });
   }, []);
 
+  const handleLogUnlock = useCallback((logId: CaptainLogId) => {
+    setProfile((prev) => {
+      const { profile: updated, newlyUnlocked } = recordCaptainLog(prev, logId);
+      if (!newlyUnlocked) return prev;
+      saveCaptainProfile(updated);
+      const et = getExtraT(languageRef.current);
+      const titleKey = `${logId}Title` as keyof ReturnType<typeof getExtraT>;
+      setBanner({
+        id: Date.now(),
+        kicker: et.chronicleTabLog,
+        title: et[titleKey],
+        accent: 'gold',
+      });
+      return updated;
+    });
+  }, []);
+
   useEffect(() => {
     const el = mountRef.current;
     if (!el) return;
@@ -472,6 +501,7 @@ export function App() {
       handleDefeatSummary,
       handleSeaEvent,
       handleKrakenArrival,
+      handleLogUnlock,
     );
     scene.setUpgrades(initialProfile.upgrades);
     scene.setOfficers(initialProfile.activeOfficers);
@@ -507,6 +537,7 @@ export function App() {
     handleDefeatSummary,
     handleSeaEvent,
     handleKrakenArrival,
+    handleLogUnlock,
   ]);
 
   const handleChangeLanguage = (lang: LanguageCode) => {
@@ -949,8 +980,13 @@ export function App() {
           spendableDoubloons={profile.doubloons + hud.runDoubloonsBonus}
           merchantBuffs={hud.merchantBuffs}
           fleetCharmBought={hud.fleetCharmBought}
+          routeChoices={hud.routeChoices}
+          mutatorChoices={hud.mutatorChoices}
           onResolveWreckage={(choice) => sceneRef.current?.resolveActiveWreckageChoice(choice)}
           onBuyOffer={handleBuyMerchantOffer}
+          onChooseRoute={(id) => sceneRef.current?.chooseSeaRoute(id)}
+          onChooseMutator={(id) => sceneRef.current?.chooseEndlessMutator(id)}
+          onResolveBoarding={(choice) => sceneRef.current?.resolveBoardingChoice(choice)}
           onClose={() => sceneRef.current?.closeEncounterModal()}
         />
       )}

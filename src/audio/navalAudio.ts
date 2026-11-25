@@ -42,6 +42,7 @@ export class NavalAudioEngine {
   private ctx: AudioContext | null = null;
   private masterGain: GainNode | null = null;
   private seaGain: GainNode | null = null;
+  private seaFilter: BiquadFilterNode | null = null;
   private musicGain: GainNode | null = null;
   private muted = false;
   private volumeLevel = 0.72;
@@ -127,6 +128,7 @@ export class NavalAudioEngine {
     const filter = this.ctx.createBiquadFilter();
     filter.type = 'lowpass';
     filter.frequency.value = 340;
+    this.seaFilter = filter;
 
     this.seaGain = this.ctx.createGain();
     this.seaGain.gain.value = 0.14;
@@ -135,6 +137,19 @@ export class NavalAudioEngine {
     filter.connect(this.seaGain);
     this.seaGain.connect(this.masterGain);
     noise.start();
+  }
+
+  public updateSeaAmbience(speedRatio: number, stormIntensity: number): void {
+    if (!this.ctx || !this.seaGain || !this.seaFilter || this.muted || this.ctx.state !== 'running') {
+      return;
+    }
+    const clampedSpeed = Math.max(0, Math.min(1.4, speedRatio));
+    const clampedStorm = Math.max(0, Math.min(1, stormIntensity));
+    const targetCutoff = 280 + clampedSpeed * 420 + clampedStorm * 680;
+    const targetGain = 0.1 + clampedSpeed * 0.08 + clampedStorm * 0.11;
+    const now = this.ctx.currentTime;
+    this.seaFilter.frequency.setTargetAtTime(targetCutoff, now, 0.18);
+    this.seaGain.gain.setTargetAtTime(targetGain, now, 0.18);
   }
 
   private startAdaptiveMusicLoop(): void {
@@ -693,6 +708,86 @@ export class NavalAudioEngine {
       osc.start(now);
       osc.stop(now + 1.35);
     }
+  }
+
+  public playWoodCreak(intensity = 0.6): void {
+    if (!this.ctx || !this.masterGain || this.muted) return;
+    const now = this.ctx.currentTime;
+    const amp = Math.max(0.1, Math.min(1, intensity));
+    const osc = this.ctx.createOscillator();
+    const filt = this.ctx.createBiquadFilter();
+    const g = this.ctx.createGain();
+    osc.type = 'sawtooth';
+    osc.frequency.setValueAtTime(112 + Math.random() * 28, now);
+    osc.frequency.linearRampToValueAtTime(78 + Math.random() * 18, now + 0.28);
+    filt.type = 'bandpass';
+    filt.frequency.value = 340;
+    filt.Q.value = 4.2;
+    g.gain.setValueAtTime(0.001, now);
+    g.gain.linearRampToValueAtTime(0.075 * amp, now + 0.05);
+    g.gain.exponentialRampToValueAtTime(0.001, now + 0.3);
+    osc.connect(filt);
+    filt.connect(g);
+    g.connect(this.masterGain);
+    osc.start(now);
+    osc.stop(now + 0.32);
+  }
+
+  public playRakingCrit(): void {
+    this.unlock();
+    if (!this.ctx || !this.masterGain || this.muted) return;
+    const now = this.ctx.currentTime;
+    const notes = [587.33, 880, 1174.66];
+    notes.forEach((f, idx) => {
+      if (!this.ctx || !this.masterGain) return;
+      const osc = this.ctx.createOscillator();
+      const g = this.ctx.createGain();
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(f, now + idx * 0.035);
+      osc.frequency.exponentialRampToValueAtTime(f * 1.12, now + idx * 0.035 + 0.16);
+      g.gain.setValueAtTime(0.14, now + idx * 0.035);
+      g.gain.exponentialRampToValueAtTime(0.001, now + idx * 0.035 + 0.18);
+      osc.connect(g);
+      g.connect(this.masterGain);
+      osc.start(now + idx * 0.035);
+      osc.stop(now + idx * 0.035 + 0.2);
+    });
+  }
+
+  public playLightningZap(): void {
+    this.unlock();
+    if (!this.ctx || !this.masterGain || this.muted) return;
+    const now = this.ctx.currentTime;
+    const osc = this.ctx.createOscillator();
+    const g = this.ctx.createGain();
+    osc.type = 'sawtooth';
+    osc.frequency.setValueAtTime(1480, now);
+    osc.frequency.exponentialRampToValueAtTime(185, now + 0.22);
+    g.gain.setValueAtTime(0.18, now);
+    g.gain.exponentialRampToValueAtTime(0.001, now + 0.24);
+    osc.connect(g);
+    g.connect(this.masterGain);
+    osc.start(now);
+    osc.stop(now + 0.25);
+
+    const len = Math.floor(this.ctx.sampleRate * 0.18);
+    const buf = this.ctx.createBuffer(1, len, this.ctx.sampleRate);
+    const ch = buf.getChannelData(0);
+    for (let i = 0; i < len; i += 1) {
+      ch[i] = (Math.random() * 2 - 1) * Math.exp(-i / (len * 0.28));
+    }
+    const noise = this.ctx.createBufferSource();
+    noise.buffer = buf;
+    const hp = this.ctx.createBiquadFilter();
+    hp.type = 'highpass';
+    hp.frequency.value = 1600;
+    const ng = this.ctx.createGain();
+    ng.gain.setValueAtTime(0.16, now);
+    ng.gain.exponentialRampToValueAtTime(0.001, now + 0.18);
+    noise.connect(hp);
+    hp.connect(ng);
+    ng.connect(this.masterGain);
+    noise.start(now);
   }
 
   public dispose(): void {

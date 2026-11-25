@@ -223,6 +223,100 @@ export type ExtraTranslationKeys = {
   waypointClearedCallout: string;
   waypointDistLabel: string;
   radarHint: string;
+
+  // Surgeon Dossier, Captain's Log, Loyalty, Relics, Routes, Mutators, Boarding Spoils
+  chronicleOfficerSurgeonLore: string;
+  chronicleTabLog: string;
+  loyaltyLabel: string;
+  loyaltyDone: string;
+  loyaltyGunner: string;
+  loyaltyBosun: string;
+  loyaltyNav: string;
+  loyaltySurgeon: string;
+
+  barkSurgeonHeal: string;
+  barkRakingCrit: string;
+  barkOilIgnite: string;
+  barkTreasureFound: string;
+  barkConvoySafe: string;
+
+  combatRake: string;
+  combatOilIgnite: string;
+  combatArcZap: string;
+  calloutBottlePicked: string;
+  calloutTreasureDug: string;
+  calloutConvoySpawned: string;
+  calloutConvoySaved: string;
+  calloutConvoyLost: string;
+  convoyHpLabel: string;
+  treasureDistLabel: string;
+  hudRelicsLabel: string;
+
+  relicStormCompassName: string;
+  relicStormCompassDesc: string;
+  relicAlchemistPowderName: string;
+  relicAlchemistPowderDesc: string;
+  relicVampiricTimberName: string;
+  relicVampiricTimberDesc: string;
+  relicThunderRodName: string;
+  relicThunderRodDesc: string;
+  relicCorsairBountyName: string;
+  relicCorsairBountyDesc: string;
+  relicIronKeelName: string;
+  relicIronKeelDesc: string;
+  relicPhantomSailsName: string;
+  relicPhantomSailsDesc: string;
+  relicCursedLedgerName: string;
+  relicCursedLedgerDesc: string;
+
+  routeModalKicker: string;
+  routeModalTitle: string;
+  routeModalSub: string;
+  routeCalmName: string;
+  routeCalmDesc: string;
+  routeSmugglerName: string;
+  routeSmugglerDesc: string;
+  routeStormName: string;
+  routeStormDesc: string;
+  routeConvoyName: string;
+  routeConvoyDesc: string;
+
+  mutatorModalKicker: string;
+  mutatorModalTitle: string;
+  mutatorModalSub: string;
+  mutatorGaleName: string;
+  mutatorGaleDesc: string;
+  mutatorGlassName: string;
+  mutatorGlassDesc: string;
+  mutatorGoldenName: string;
+  mutatorGoldenDesc: string;
+  mutatorLightningName: string;
+  mutatorLightningDesc: string;
+
+  boardingModalKicker: string;
+  boardingModalTitle: string;
+  boardingModalSub: string;
+  boardingRepairBtn: string;
+  boardingRepairDesc: string;
+  boardingPlunderBtn: string;
+  boardingPlunderDesc: string;
+  boardingPowderBtn: string;
+  boardingPowderDesc: string;
+
+  logFirstSailTitle: string;
+  logFirstSailBody: string;
+  logCrimsonFangTitle: string;
+  logCrimsonFangBody: string;
+  logAshenPyreTitle: string;
+  logAshenPyreBody: string;
+  logBlackSovereignTitle: string;
+  logBlackSovereignBody: string;
+  logKrakenSlainTitle: string;
+  logKrakenSlainBody: string;
+  logBottleTreasureTitle: string;
+  logBottleTreasureBody: string;
+  logConvoyEscortedTitle: string;
+  logConvoyEscortedBody: string;
 };
 
 const EN: ExtraTranslationKeys = {
@@ -434,6 +528,100 @@ const EN: ExtraTranslationKeys = {
   waypointClearedCallout: 'Chart waypoint cleared.',
   waypointDistLabel: 'WP',
   radarHint: 'Click chart to plot course',
+
+  chronicleOfficerSurgeonLore:
+    'Former Crown navy sawbones who burned his commission when Admiral Vance starved wounded prisoners. Keeps oak splints, rum-soaked bandages, and apothecary fire within arm’s reach.',
+  chronicleTabLog: 'Captain’s Log',
+  loyaltyLabel: 'Loyalty Trial',
+  loyaltyDone: 'Sworn (+10% Mastery)',
+  loyaltyGunner: 'Sink 18 vessels',
+  loyaltyBosun: 'Board 6 enemy ships',
+  loyaltyNav: 'Sail 12 nautical miles',
+  loyaltySurgeon: 'Uncover 3 Sea Secrets',
+
+  barkSurgeonHeal: 'Surgeon: Keep steady, Captain — planks patched and bleeding staunched!',
+  barkRakingCrit: 'Raking Broadside! Timber shattered straight down her keel!',
+  barkOilIgnite: 'Sea Ablaze! Oil slick ignited beneath their hull!',
+  barkTreasureFound: 'X Marks the Spot! Buried Corsair coffer & Sea Relic hauled aboard!',
+  barkConvoySafe: 'Trade Brig escorted safely — Captain’s bounty & Relic awarded!',
+
+  combatRake: 'RAKE ×1.55!',
+  combatOilIgnite: 'OIL BLAZE!',
+  combatArcZap: 'ARC ZAP!',
+  calloutBottlePicked: 'Message in a Bottle! Check your radar for the golden X treasure mark!',
+  calloutTreasureDug: 'Treasure salvaged from the marked shoal — Relic & Doubloons gained!',
+  calloutConvoySpawned: 'Friendly Trade Brig joining formation — protect her hull across this wave!',
+  calloutConvoySaved: 'Trade Brig survived the gauntlet! +90 Doubloons & Relic earned!',
+  calloutConvoyLost: 'Our escorted Trade Brig was lost to the raiders...',
+  convoyHpLabel: 'Escort',
+  treasureDistLabel: 'X Mark',
+  hudRelicsLabel: 'Relics',
+
+  relicStormCompassName: 'Storm Compass',
+  relicStormCompassDesc: '+24% speed & +18% cannon dmg when sailing close-hauled into wind.',
+  relicAlchemistPowderName: 'Alchemist Powder',
+  relicAlchemistPowderDesc: 'Barrel & oil blasts spare your hull; +25% AoE radius & +8% cannon dmg.',
+  relicVampiricTimberName: 'Siphon Timber',
+  relicVampiricTimberDesc: 'Restores +12 Hull HP every time you sink or board an enemy vessel.',
+  relicThunderRodName: 'Tempest Lightning Rod',
+  relicThunderRodDesc: 'Chain & Bolt shots during Squalls arc +30 lightning dmg to nearby ships.',
+  relicCorsairBountyName: 'Corsair Ledger',
+  relicCorsairBountyDesc: '+32% Doubloons gained from all battles, wrecks, and buried chests.',
+  relicIronKeelName: 'Ironclad Keel',
+  relicIronKeelDesc: '-25% reef/collision damage and +35% bow ramming impact.',
+  relicPhantomSailsName: 'Phantom Silk',
+  relicPhantomSailsDesc: '+15% ship speed and -22% cooldown on Wave Surge & Smoke.',
+  relicCursedLedgerName: 'Abyssal Powder Horn',
+  relicCursedLedgerDesc: '+24% cannon damage, +20% Storm Rage gain, and +10% Doubloons.',
+
+  routeModalKicker: 'Chart Navigation',
+  routeModalTitle: 'Choose Your Sea Route',
+  routeModalSub: 'Plot the next sector’s hazards, weather, and spoils before enemy raiders close in.',
+  routeCalmName: 'Calm Trade Channel',
+  routeCalmDesc: 'Guarantees a Friendly Merchant Brig, +22% Hull patch & +15 Crew Morale.',
+  routeSmugglerName: 'Smuggler’s Reefs',
+  routeSmugglerDesc: 'Spawns 2 Drifting Wreckages and a Message-in-a-Bottle Treasure Map among mines.',
+  routeStormName: 'Eye of the Tempest',
+  routeStormDesc: 'Heavy Squall & Rogue Swell ahead — awards an immediate Sea Relic & +35% wave gold!',
+  routeConvoyName: 'Escort Trade Brig',
+  routeConvoyDesc: 'Protect a friendly merchant across this wave for +90 Doubloons & a Sea Relic.',
+
+  mutatorModalKicker: 'Endless Maelstrom',
+  mutatorModalTitle: 'Choose Wave Mutator',
+  mutatorModalSub: 'Select one escalating sea law to bind this endless run:',
+  mutatorGaleName: 'Trade Gale Force',
+  mutatorGaleDesc: '+25% Ship Speed, -15% Reload Time, +22% Wave Swell, +15% Gold.',
+  mutatorGlassName: 'Volatile Glass Powder',
+  mutatorGlassDesc: '+40% All Cannon Damage & +20% Gold, but -16% Hull Armor.',
+  mutatorGoldenName: 'Gilded Armada',
+  mutatorGoldenDesc: '+55% Doubloons from all sources, enemies gain +18% Hull HP.',
+  mutatorLightningName: 'Lightning Sea',
+  mutatorLightningDesc: 'Frequent Squalls, +35% Storm Rage gain, +12% Damage & +20% Gold.',
+
+  boardingModalKicker: 'Grappling Victory',
+  boardingModalTitle: 'Claim Boarding Spoils',
+  boardingModalSub: 'Your crew controls the enemy quarterdeck. Order how to strip the prize:',
+  boardingRepairBtn: 'Strip Oak & Patch Hull',
+  boardingRepairDesc: 'Restore +34% Max Hull HP immediately and salvage modest gold.',
+  boardingPlunderBtn: 'Seize Captain’s Coffer',
+  boardingPlunderDesc: 'Claim 2x Doubloon plunder and +12% Hull patch.',
+  boardingPowderBtn: 'Loot Powder & Storm Charge',
+  boardingPowderDesc: 'Reset all broadside/ability cooldowns immediately and gain +35% Storm Rage.',
+
+  logFirstSailTitle: 'Entry I · Hoisting the Black Pennant',
+  logFirstSailBody: 'Free Cove lit the dusk beacon tonight. With oak hull freshly tarred and brass cannons run out, we swear to break the Iron Crown blockade.',
+  logCrimsonFangTitle: 'Entry II · Fall of Crimson Fang',
+  logCrimsonFangBody: 'Captain Varn’s scarlet brigantine went down in Twilight Archipelagos. His charts spoke of volcanic embers and a war-frigate guarding the Ash Strait.',
+  logAshenPyreTitle: 'Entry III · Embers of Ashen Pyre',
+  logAshenPyreBody: 'Through raining cinder and basalt cliffs we shattered the Ashen Pyre. Beyond the smoke lies only the howling Maelstrom.',
+  logBlackSovereignTitle: 'Entry IV · Dawn Over the Free Sea',
+  logBlackSovereignBody: 'Black Sovereign is broken. Every lighthouse burns bright once more, and the Pennant flies unchallenged across all three seas.',
+  logKrakenSlainTitle: 'Entry V · Leviathan of the Trench',
+  logKrakenSlainBody: 'We faced the Abyssal Kraken itself and drove harpoons straight through its armored mantle. Even the deep fears our broadsides.',
+  logBottleTreasureTitle: 'Entry VI · Charted in Glass',
+  logBottleTreasureBody: 'A corked bottle led us to a drowned corsair’s shoal—proving the sea still hides fortunes for captains sharp enough to read the radar.',
+  logConvoyEscortedTitle: 'Entry VII · Oath of the Trade Lane',
+  logConvoyEscortedBody: 'No pirate thrives when merchants starve. By bringing the Wandering Brig safely through raider fire, Free Cove’s harbors thrive anew.',
 };
 
 const RU: ExtraTranslationKeys = {
@@ -645,6 +833,100 @@ const RU: ExtraTranslationKeys = {
   waypointClearedCallout: 'Путевая точка сброшена.',
   waypointDistLabel: 'Точка',
   radarHint: 'Клик по карте — курс',
+
+  chronicleOfficerSurgeonLore:
+    'Бывший флотский лекарь Короны, сжегший патент после жестокости адмирала Ванса. Держит дубовые скобы, ром и алхимические мази наготове под огнем.',
+  chronicleTabLog: 'Судовой журнал',
+  loyaltyLabel: 'Испытание верности',
+  loyaltyDone: 'Присягнул (+10% мастерство)',
+  loyaltyGunner: 'Потопить 18 судов',
+  loyaltyBosun: 'Взять на абордаж 6 судов',
+  loyaltyNav: 'Пройти 12 морских миль',
+  loyaltySurgeon: 'Открыть 3 тайны морей',
+
+  barkSurgeonHeal: 'Врач: Держись, капитан — пробоины залатаны, команда в строю!',
+  barkRakingCrit: 'Продольный залп! Ядра прошили корабль от носа до кормы!',
+  barkOilIgnite: 'Море горит! Нефтяное пятно вспыхнуло под вражеским килем!',
+  barkTreasureFound: 'Крест на карте! Поднят пиратский сундук и морская реликвия!',
+  barkConvoySafe: 'Купеческий бриг спасен — получены дублоны и реликвия!',
+
+  combatRake: 'ПРОШИВ ×1.55!',
+  combatOilIgnite: 'ПОЖАР НЕФТИ!',
+  combatArcZap: 'РАЗРЯД!',
+  calloutBottlePicked: 'Бутылочная почта! На радаре отмечен золотой крест X с кладом!',
+  calloutTreasureDug: 'Клад поднят с отмели — получена реликвия и дублоны!',
+  calloutConvoySpawned: 'Дружественный купеческий бриг вышел на курс — прикройте его до конца волны!',
+  calloutConvoySaved: 'Купец прорвался через блокаду! +90 дублонов и реликвия!',
+  calloutConvoyLost: 'Сопровождаемый купец пошел ко дну...',
+  convoyHpLabel: 'Конвой',
+  treasureDistLabel: 'Клад X',
+  hudRelicsLabel: 'Реликвии',
+
+  relicStormCompassName: 'Компас шторма',
+  relicStormCompassDesc: '+24% скорости и +18% урона пушек при ходе круто к ветру.',
+  relicAlchemistPowderName: 'Порох алхимика',
+  relicAlchemistPowderDesc: 'Свои бочки и нефть не ранят корпус; +25% радиус взрыва и +8% урона.',
+  relicVampiricTimberName: 'Кровавый дуб',
+  relicVampiricTimberDesc: 'Восстанавливает +12 ХП корпуса за каждое потопление или абордаж.',
+  relicThunderRodName: 'Громоотвод мачты',
+  relicThunderRodDesc: 'Книппели и гарпун-болты в шквал бьют цепной молнией (+30 урона) по соседям.',
+  relicCorsairBountyName: 'Счетная книга корсара',
+  relicCorsairBountyDesc: '+32% дублонов из всех боев, обломков и найденных кладов.',
+  relicIronKeelName: 'Кованый киль',
+  relicIronKeelDesc: '-25% урона от рифов и столкновений и +35% урона от тарана носом.',
+  relicPhantomSailsName: 'Призрачный шелк',
+  relicPhantomSailsDesc: '+15% скорости хода и -22% перезарядки Прыжка и Дыма.',
+  relicCursedLedgerName: 'Проклятая пороховница',
+  relicCursedLedgerDesc: '+24% урона пушек, +20% накопления Шторма и +10% золота.',
+
+  routeModalKicker: 'Штурманская карта',
+  routeModalTitle: 'Выберите морской маршрут',
+  routeModalSub: 'Определите погоду, опасности и добычу следующего сектора перед новой волной.',
+  routeCalmName: 'Тихий торговый фарватер',
+  routeCalmDesc: 'Гарантированный купеческий бриг, +22% починки корпуса и +15 морали.',
+  routeSmugglerName: 'Рифы контрабандистов',
+  routeSmugglerDesc: '2 скопления обломков и бутылочная карта клада среди плавучих мин.',
+  routeStormName: 'Око бури',
+  routeStormDesc: 'Сильный шквал и волна-убийца — сразу дает морскую реликвию и +35% золота волны!',
+  routeConvoyName: 'Эскорт купца',
+  routeConvoyDesc: 'Защитите мирный бриг в новой волне ради +90 дублонов и реликвии.',
+
+  mutatorModalKicker: 'Бесконечный Мальстрем',
+  mutatorModalTitle: 'Выберите закон моря',
+  mutatorModalSub: 'Усиливающееся правило действует до конца заплыва:',
+  mutatorGaleName: 'Ураганный попутный',
+  mutatorGaleDesc: '+25% скорости, -15% перезарядки, +22% высоты волн и +15% золота.',
+  mutatorGlassName: 'Хрустальный порох',
+  mutatorGlassDesc: '+40% урона всех орудий и +20% золота, но броня слабее на 16%.',
+  mutatorGoldenName: 'Золотая армада',
+  mutatorGoldenDesc: '+55% дублонов из всех источников, но враги прочнее на 18%.',
+  mutatorLightningName: 'Молниевое море',
+  mutatorLightningDesc: 'Частые шквалы, +35% накопления Шторма, +12% урона и +20% золота.',
+
+  boardingModalKicker: 'Абордаж успешен',
+  boardingModalTitle: 'Выберите трофеи',
+  boardingModalSub: 'Палуба врага захвачена. Прикажите команде, что забрать первым:',
+  boardingRepairBtn: 'Снять дуб и залатать борт',
+  boardingRepairDesc: 'Мгновенно восстанавливает +34% макс. ХП корпуса и дает немного золота.',
+  boardingPlunderBtn: 'Забрать капитанский ларь',
+  boardingPlunderDesc: 'Двойная добыча дублонов и +12% починки корпуса.',
+  boardingPowderBtn: 'Захватить порох и заряд бури',
+  boardingPowderDesc: 'Мгновенно сбрасывает перезарядку залпов/умений и дает +35% Шторма.',
+
+  logFirstSailTitle: 'Запись I · Черный вымпел поднят',
+  logFirstSailBody: 'Вольная Бухта зажгла маяк в сумерках. Дубовый корпус просмолен, пушки заряжены — мы идем ломать блокаду Железной Короны.',
+  logCrimsonFangTitle: 'Запись II · Гибель Багрового Клыка',
+  logCrimsonFangBody: 'Алый бригантин капитана Варна ушел под воду. Его карты ведут к вулканическим утесам и фрегату Пепельного пролива.',
+  logAshenPyreTitle: 'Запись III · Угли Пепельного Костра',
+  logAshenPyreBody: 'Сквозь пепел и базальтовые скалы мы пробили дорогу к сердцу бури. Впереди остался лишь Мальстрем.',
+  logBlackSovereignTitle: 'Запись IV · Рассвет над Свободным морем',
+  logBlackSovereignBody: 'Черный Властелин повержен. Все маяки горят вновь, и Черный вымпел свободно реет над тремя морями.',
+  logKrakenSlainTitle: 'Запись V · Чудовище глубин',
+  logKrakenSlainBody: 'Мы сошлись с самим Кракеном и пробили его панцирь гарпунами. Даже бездна запомнит наши залпы.',
+  logBottleTreasureTitle: 'Запись VI · Карта в стекле',
+  logBottleTreasureBody: 'Запечатанная бутылка вывела нас к затонувшему кладу — море щедро к тем, кто умеет читать радар.',
+  logConvoyEscortedTitle: 'Запись VII · Закон торговой пути',
+  logConvoyEscortedBody: 'Свободная бухта живет морской торговлей. Прикрыв купеческий бриг от рейдеров, мы укрепили свою славу.',
 };
 
 // Provide complete overrides per language while cleanly reusing concise terms where appropriate

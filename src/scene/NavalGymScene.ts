@@ -28,6 +28,7 @@ import {
   computeBroadsideAlignment,
   computeBroadsideShot,
   computePlungingRamBonus,
+  computeRakingShotMultiplier,
   computeRockfallSplash,
   computeWaveCrestScore,
   computeWindEfficiency,
@@ -52,6 +53,19 @@ import {
   type SeaParams,
   type ShipState,
 } from '../game/sailingPhysics';
+import {
+  computeEndlessMutatorModifiers,
+  computeRelicModifiers,
+  pickEndlessMutators,
+  pickRandomUnownedRelic,
+  pickRouteChoices,
+  resolveBoardingSpoils,
+  type BoardingSpoilChoice,
+  type CaptainLogId,
+  type EndlessMutatorId,
+  type RunRelicId,
+  type SeaRouteId,
+} from '../game/voyageSystems';
 import {
   createDefaultRunMerchantBuffs,
   purchaseMerchantOffer,
@@ -223,13 +237,20 @@ export interface HudSnapshot {
   monstersSunk: number;
   bestiaryKillsInRun: Partial<Record<BestiaryId, number>>;
   nearbyInteract: 'wreckage' | 'merchant' | null;
-  activeEncounterModal: 'wreckage' | 'merchant' | null;
+  activeEncounterModal: 'wreckage' | 'merchant' | 'route' | 'mutator' | 'boarding' | null;
   merchantBuffs: RunMerchantBuffs;
   fleetCharmBought: boolean;
   rogueWaveActive: boolean;
   waypointDistMeters: number | null;
   surgeonActive: boolean;
   equippedCrest: ShipCrestId;
+  activeRelics: RunRelicId[];
+  activeMutators: EndlessMutatorId[];
+  routeChoices: SeaRouteId[];
+  mutatorChoices: EndlessMutatorId[];
+  convoyHp: number | null;
+  convoyMaxHp: number | null;
+  treasureDistMeters: number | null;
 }
 
 export type SceneMode = 'title' | 'playing' | 'paused' | 'victory' | 'defeat';
@@ -605,9 +626,11 @@ export class NavalGymScene {
   private flashRings: FlashRing[] = [];
   private wakeNodes: WakeNode[] = [];
   private smokePuffs: SmokePuff3D[] = [];
+  private particlePool: THREE.Mesh[] = [];
+  private smokePuffPool: Array<{ mesh: THREE.Mesh; mat: THREE.MeshBasicMaterial }> = [];
   private smokeSpawnTimer = 0;
   private bowSprayTimer = 0;
-  private activeEncounterModal: 'wreckage' | 'merchant' | null = null;
+  private activeEncounterModal: 'wreckage' | 'merchant' | 'route' | 'mutator' | 'boarding' | null = null;
   private merchantBuffs: RunMerchantBuffs = createDefaultRunMerchantBuffs();
   private fleetCharmBought = false;
   private merchantSpawnTimer = 18;
@@ -624,6 +647,49 @@ export class NavalGymScene {
   private courseWaypoint: { x: number; z: number } | null = null;
   private waypointBeacon: BuiltWaypointBeacon | null = null;
   private surgeonHealAccum = 0;
+  private drsScale = 1.0;
+  private drsTimer = 0;
+  private drsFrameAccum = 0;
+  private drsFrameCount = 0;
+  private clubhaulCreakCd = 0;
+  private activeRelics: RunRelicId[] = [];
+  private activeMutators: EndlessMutatorId[] = [];
+  private routeChoices: SeaRouteId[] = [];
+  private mutatorChoices: EndlessMutatorId[] = [];
+  private pendingNextWaveMode: 'campaignWave2' | 'endlessNext' | null = null;
+  private pendingBoardingTargetId: number | null = null;
+  private waveGoldBonusMult = 1;
+  private oilSlicks: Array<{
+    x: number;
+    z: number;
+    radius: number;
+    life: number;
+    maxLife: number;
+    ignited: boolean;
+    igniteTimer: number;
+    tickAccum: number;
+  }> = [];
+  private lightningArcs: Array<{
+    ax: number;
+    ay: number;
+    az: number;
+    bx: number;
+    by: number;
+    bz: number;
+    life: number;
+  }> = [];
+  private treasureSpot: { x: number; z: number; collected: boolean } | null = null;
+  private escortConvoy: {
+    x: number;
+    z: number;
+    heading: number;
+    speed: number;
+    hp: number;
+    maxHp: number;
+    built: BuiltShip;
+    alive: boolean;
+    hitFlash: number;
+  } | null = null;
 
   // Shared GPU geometries & material caches (prevents runtime GC & shader recompiles)
   private readonly sharedBurstGeo = new THREE.DodecahedronGeometry(0.24, 0);
@@ -743,6 +809,7 @@ export class NavalGymScene {
   private onDefeatSummary?: (payload: DefeatSummaryPayload) => void;
   private onSeaEvent?: (kind: SeaEventKind) => void;
   private onKrakenArrival?: () => void;
+  private onLogUnlock?: (logId: CaptainLogId) => void;
 
   private readonly tmpVec = new THREE.Vector3();
   private readonly tmpDir = new THREE.Vector3();
@@ -761,6 +828,7 @@ export class NavalGymScene {
     onDefeatSummary?: (payload: DefeatSummaryPayload) => void,
     onSeaEvent?: (kind: SeaEventKind) => void,
     onKrakenArrival?: () => void,
+    onLogUnlock?: (logId: CaptainLogId) => void,
   ) {
     this.container = container;
     this.onHudUpdate = onHudUpdate;
@@ -773,6 +841,7 @@ export class NavalGymScene {
     this.onDefeatSummary = onDefeatSummary;
     this.onSeaEvent = onSeaEvent;
     this.onKrakenArrival = onKrakenArrival;
+    this.onLogUnlock = onLogUnlock;
 
     this.scene = new THREE.Scene();
     this.scene.background = new THREE.Color(0x090d1f);
@@ -1392,13 +1461,238 @@ export class NavalGymScene {
         morale: this.morale,
       },
     );
+    const relicMods = computeRelicModifiers(this.activeRelics);
+    const mutMods = computeEndlessMutatorModifiers(this.activeMutators);
     this.playerStats = {
       ...base,
-      damageMult: Number((base.damageMult * this.merchantBuffs.damageMult).toFixed(2)),
-      reloadTime: Number(Math.max(0.65, base.reloadTime * this.merchantBuffs.reloadMult).toFixed(2)),
-      speedMult: Number((base.speedMult * this.merchantBuffs.speedMult).toFixed(2)),
+      damageMult: Number(
+        (
+          base.damageMult *
+          this.merchantBuffs.damageMult *
+          relicMods.damageBonusMult *
+          mutMods.damageMult
+        ).toFixed(2),
+      ),
+      reloadTime: Number(
+        Math.max(
+          0.6,
+          base.reloadTime * this.merchantBuffs.reloadMult * mutMods.reloadMult,
+        ).toFixed(2),
+      ),
+      speedMult: Number(
+        (
+          base.speedMult *
+          this.merchantBuffs.speedMult *
+          relicMods.speedBonusMult *
+          mutMods.speedMult
+        ).toFixed(2),
+      ),
       burnDamageMult: Number((base.burnDamageMult * this.merchantBuffs.splashBurnMult).toFixed(2)),
+      ramBonusMult: Number((base.ramBonusMult * relicMods.ramBonusMult).toFixed(2)),
+      doubloonGainMult: Number(
+        (
+          base.doubloonGainMult *
+          relicMods.doubloonBonusMult *
+          mutMods.doubloonMult *
+          this.waveGoldBonusMult
+        ).toFixed(2),
+      ),
+      surgeCooldown: Number((base.surgeCooldown * relicMods.cooldownMult).toFixed(2)),
     };
+  }
+
+  private acquireParticleMesh(geo: THREE.BufferGeometry, mat: THREE.Material): THREE.Mesh {
+    const recycled = this.particlePool.pop();
+    if (recycled) {
+      recycled.geometry = geo;
+      recycled.material = mat;
+      recycled.scale.setScalar(1);
+      recycled.rotation.set(0, 0, 0);
+      this.scene.add(recycled);
+      return recycled;
+    }
+    const mesh = new THREE.Mesh(geo, mat);
+    this.scene.add(mesh);
+    return mesh;
+  }
+
+  private releaseParticleMesh(mesh: THREE.Mesh): void {
+    this.scene.remove(mesh);
+    if (this.particlePool.length < 180) {
+      this.particlePool.push(mesh);
+    }
+  }
+
+  private acquireSmokePuff(colorHex: number): { mesh: THREE.Mesh; mat: THREE.MeshBasicMaterial } {
+    const recycled = this.smokePuffPool.pop();
+    if (recycled) {
+      recycled.mat.color.setHex(colorHex);
+      recycled.mat.opacity = 0.62;
+      recycled.mesh.scale.setScalar(1);
+      this.scene.add(recycled.mesh);
+      return recycled;
+    }
+    const mat = new THREE.MeshBasicMaterial({
+      color: colorHex,
+      transparent: true,
+      opacity: 0.62,
+      depthWrite: false,
+    });
+    const mesh = new THREE.Mesh(this.sharedSmokeGeo, mat);
+    this.scene.add(mesh);
+    return { mesh, mat };
+  }
+
+  private releaseSmokePuff(mesh: THREE.Mesh): void {
+    this.scene.remove(mesh);
+    const mat = mesh.material as THREE.MeshBasicMaterial;
+    if (this.smokePuffPool.length < 64) {
+      this.smokePuffPool.push({ mesh, mat });
+    } else {
+      mat.dispose();
+    }
+  }
+
+  private spawnOilSlick(x: number, z: number, radius: number, ignited = false): void {
+    if (this.oilSlicks.length >= 14) {
+      this.oilSlicks.shift();
+    }
+    this.oilSlicks.push({
+      x,
+      z,
+      radius,
+      life: ignited ? 7.5 : 16,
+      maxLife: ignited ? 7.5 : 16,
+      ignited,
+      igniteTimer: ignited ? 6.0 : 0,
+      tickAccum: 0,
+    });
+  }
+
+  private igniteOilSlicks(x: number, z: number, triggerRadius: number): boolean {
+    let ignitedAny = false;
+    for (const slick of this.oilSlicks) {
+      if (slick.ignited) continue;
+      if (Math.hypot(slick.x - x, slick.z - z) <= slick.radius + triggerRadius) {
+        slick.ignited = true;
+        slick.igniteTimer = 5.8;
+        slick.life = Math.max(slick.life, 6.0);
+        ignitedAny = true;
+        const sy = sampleWaveHeight(slick.x, slick.z, this.elapsed, this.seaParams.waveHeight);
+        this.spawnBurst(slick.x, sy + 1.2, slick.z, 0xff6228, 12);
+        this.spawnRing(slick.x, sy + 0.5, slick.z, '#FF7B2E', slick.radius, 0.5);
+        this.spawnFloatingText(slick.x, sy + 4.4, slick.z, this.et().combatOilIgnite, '#FF9E44', 1.15);
+      }
+    }
+    if (ignitedAny) {
+      this.audio.playFireShot();
+      this.setCallout(this.et().barkOilIgnite, 3.0, 'gunner');
+    }
+    return ignitedAny;
+  }
+
+  private spawnEscortConvoy(): void {
+    if (this.escortConvoy) {
+      this.scene.remove(this.escortConvoy.built.root);
+      this.escortConvoy = null;
+    }
+    const cx = Math.max(-88, Math.min(88, this.ship.x - Math.sin(this.ship.heading) * 18 - 14));
+    const cz = Math.max(-88, Math.min(88, this.ship.z + Math.cos(this.ship.heading) * 18 + 10));
+    const built = buildCorsairShip({
+      isEnemy: false,
+      archetype: 'healer',
+      scale: 0.94,
+    });
+    const cy = sampleWaveHeight(cx, cz, this.elapsed, this.seaParams.waveHeight);
+    built.root.position.set(cx, cy, cz);
+    this.scene.add(built.root);
+    this.escortConvoy = {
+      x: cx,
+      z: cz,
+      heading: this.ship.heading,
+      speed: 4.9,
+      hp: 165,
+      maxHp: 165,
+      built,
+      alive: true,
+      hitFlash: 0,
+    };
+    this.setCallout(this.et().calloutConvoySpawned, 3.8, 'bosun');
+  }
+
+  public chooseSeaRoute(routeId: SeaRouteId): void {
+    this.activeEncounterModal = null;
+    this.routeChoices = [];
+    this.waveGoldBonusMult = 1;
+    this.audio.playUiClick();
+
+    if (routeId === 'calmChannel') {
+      const wSpec = WEATHER_SPECS.calm;
+      this.weather = 'calm';
+      this.weatherTimer = 38;
+      this.seaParams = {
+        ...this.seaParams,
+        waveHeight: Number((this.baseActWaveHeight * wSpec.waveMult).toFixed(2)),
+        windSpeed: Number((this.baseActWindSpeed * wSpec.windMult).toFixed(2)),
+      };
+      this.hullHp = Math.min(this.hullMaxHp, this.hullHp + Math.round(this.hullMaxHp * 0.22));
+      this.morale = Math.min(100, this.morale + 15);
+      this.recomputePlayerStats();
+      this.spawnMerchantSite();
+    } else if (routeId === 'smugglerReefs') {
+      const rx1 = Math.max(-96, Math.min(96, this.ship.x + 34));
+      const rz1 = Math.max(-96, Math.min(96, this.ship.z - 28));
+      const rx2 = Math.max(-96, Math.min(96, this.ship.x - 36));
+      const rz2 = Math.max(-96, Math.min(96, this.ship.z + 24));
+      this.spawnWreckageSite(rx1, rz1);
+      this.spawnWreckageSite(rx2, rz2);
+      this.spawnProp('bottle', Math.max(-92, Math.min(92, this.ship.x + 18)), Math.max(-92, Math.min(92, this.ship.z - 16)));
+    } else if (routeId === 'stormTrench') {
+      const wSpec = WEATHER_SPECS.squall;
+      this.weather = 'squall';
+      this.weatherTimer = 38;
+      this.seaParams = {
+        ...this.seaParams,
+        waveHeight: Number((this.baseActWaveHeight * wSpec.waveMult).toFixed(2)),
+        windSpeed: Number((this.baseActWindSpeed * wSpec.windMult).toFixed(2)),
+      };
+      this.waveGoldBonusMult = 1.35;
+      const relic = pickRandomUnownedRelic(this.activeRelics, Math.random());
+      if (relic) {
+        this.activeRelics.push(relic);
+      }
+      this.rogueWaveTimer = 1.0;
+      this.recomputePlayerStats();
+    } else if (routeId === 'escortConvoy') {
+      this.spawnEscortConvoy();
+    }
+
+    const nextMode = this.pendingNextWaveMode;
+    this.pendingNextWaveMode = null;
+    if (nextMode === 'campaignWave2') {
+      this.spawnWave2Flagship();
+    } else if (nextMode === 'endlessNext') {
+      this.spawnEndlessNextWave();
+    } else {
+      this.emitHud();
+    }
+  }
+
+  public chooseEndlessMutator(mutId: EndlessMutatorId): void {
+    this.activeEncounterModal = null;
+    this.mutatorChoices = [];
+    if (!this.activeMutators.includes(mutId)) {
+      this.activeMutators.push(mutId);
+    }
+    this.recomputePlayerStats();
+    this.audio.playPickup();
+    const nextMode = this.pendingNextWaveMode;
+    this.pendingNextWaveMode = null;
+    if (nextMode === 'endlessNext') {
+      this.spawnEndlessNextWave();
+    } else {
+      this.emitHud();
+    }
   }
 
   private spawnEnemiesForDifficulty(): void {
@@ -1849,7 +2143,7 @@ export class NavalGymScene {
     this.audio.unlock();
     if (document.body.dataset.modalOpen === '1') return;
 
-    if (this.mode === 'playing' && e.button === 0 && this.activeEncounterModal === null) {
+    if (this.mode === 'playing' && (e.button === 0 || e.button === 2) && this.activeEncounterModal === null) {
       const rect = this.renderer.domElement.getBoundingClientRect();
       const localX = e.clientX - rect.left;
       const localY = e.clientY - rect.top;
@@ -1857,6 +2151,14 @@ export class NavalGymScene {
       const dxR = localX - radar.cx;
       const dyR = localY - radar.cy;
       if (Math.hypot(dxR, dyR) <= radar.radius + 4) {
+        if (e.button === 2) {
+          e.preventDefault();
+          if (this.courseWaypoint) {
+            this.clearWaypoint();
+            this.audio.playUiClick();
+          }
+          return;
+        }
         const wx = Math.max(-132, Math.min(132, dxR / radar.scale));
         const wz = Math.max(-132, Math.min(132, dyR / radar.scale));
         if (
@@ -2179,6 +2481,7 @@ export class NavalGymScene {
       this.resetVoyage();
     }
     this.setMode('playing');
+    this.onLogUnlock?.('logFirstSail');
     this.setCallout(this.t().calloutDefault, 3.4);
   }
 
@@ -2212,6 +2515,20 @@ export class NavalGymScene {
     this.merchantBuffs = createDefaultRunMerchantBuffs();
     this.fleetCharmBought = false;
     this.surgeonHealAccum = 0;
+    this.activeRelics = [];
+    this.activeMutators = [];
+    this.routeChoices = [];
+    this.mutatorChoices = [];
+    this.pendingNextWaveMode = null;
+    this.pendingBoardingTargetId = null;
+    this.waveGoldBonusMult = 1;
+    this.treasureSpot = null;
+    this.oilSlicks = [];
+    this.lightningArcs = [];
+    if (this.escortConvoy) {
+      this.scene.remove(this.escortConvoy.built.root);
+      this.escortConvoy = null;
+    }
     this.milesSailed = 0;
     this.shotsFired = 0;
     this.shotsHit = 0;
@@ -2285,6 +2602,7 @@ export class NavalGymScene {
     this.playerBuilt?.setUpgradeTier(getTotalUpgradeLevel(this.upgrades));
     this.playerBuilt?.setCrestStyle?.(this.equippedCrest);
     this.playerBuilt?.setShipLoadoutStyle?.(this.shipClass, this.equippedFigurehead);
+    this.playerBuilt?.setHullDamageRatio?.(1);
     this.spawnEnemiesForDifficulty();
     this.spawnArenaBarrels();
     this.callout = this.t().calloutDefault;
@@ -2297,11 +2615,8 @@ export class NavalGymScene {
 
   private clearVfx(): void {
     for (const p of this.projectiles) this.scene.remove(p.mesh);
-    for (const pt of this.particles) this.scene.remove(pt.mesh);
-    for (const sp of this.smokePuffs) {
-      this.scene.remove(sp.mesh);
-      (sp.mesh.material as THREE.Material).dispose();
-    }
+    for (const pt of this.particles) this.releaseParticleMesh(pt.mesh);
+    for (const sp of this.smokePuffs) this.releaseSmokePuff(sp.mesh);
     for (const m of this.activeMines) {
       this.scene.remove(m.mesh);
       m.emberMat.dispose();
@@ -2311,6 +2626,10 @@ export class NavalGymScene {
     if (this.merchantSite) {
       this.scene.remove(this.merchantSite.built.root);
       this.merchantSite = null;
+    }
+    if (this.escortConvoy) {
+      this.scene.remove(this.escortConvoy.built.root);
+      this.escortConvoy = null;
     }
     for (const b of this.fallingBoulders) {
       this.scene.remove(b.mesh);
@@ -2322,6 +2641,9 @@ export class NavalGymScene {
       this.waypointBeacon = null;
     }
     this.courseWaypoint = null;
+    this.treasureSpot = null;
+    this.oilSlicks = [];
+    this.lightningArcs = [];
     this.projectiles = [];
     this.mortarZones = [];
     this.activeMines = [];
@@ -2913,7 +3235,11 @@ export class NavalGymScene {
     if (this.mode !== 'playing') return;
     const { state, triggered } = activateSmokeAbility(this.abilities);
     if (!triggered) return;
-    this.abilities = state;
+    const relicMods = computeRelicModifiers(this.activeRelics);
+    this.abilities = {
+      ...state,
+      smokeCooldown: Number((state.smokeCooldown * relicMods.cooldownMult).toFixed(2)),
+    };
     this.smokeSpawnTimer = 0;
 
     this.audio.playSmoke();
@@ -2979,17 +3305,10 @@ export class NavalGymScene {
     const px = sternX + (Math.random() - 0.5) * spread;
     const pz = sternZ + (Math.random() - 0.5) * spread;
     const isTeal = Math.random() < 0.35;
-    const mat = new THREE.MeshBasicMaterial({
-      color: isTeal ? 0x2a6d78 : 0x1e2b4d,
-      transparent: true,
-      opacity: 0.62,
-      depthWrite: false,
-    });
     const baseScale = initialBurst ? 1.55 + Math.random() * 0.7 : 1.25 + Math.random() * 0.6;
-    const mesh = new THREE.Mesh(this.sharedSmokeGeo, mat);
+    const { mesh } = this.acquireSmokePuff(isTeal ? 0x2a6d78 : 0x1e2b4d);
     mesh.position.set(px, wy + 1.1 + Math.random() * 0.7, pz);
     mesh.scale.setScalar(baseScale);
-    this.scene.add(mesh);
     this.smokePuffs.push({
       mesh,
       vx: Math.sin(this.seaParams.windAngle) * 1.4 + (Math.random() - 0.5) * 1.6,
@@ -3019,7 +3338,7 @@ export class NavalGymScene {
   }
 
   public triggerBoarding(): void {
-    if (this.mode !== 'playing') return;
+    if (this.mode !== 'playing' || this.activeEncounterModal !== null) return;
     const target = this.findBoardableEnemy();
     if (!target) return;
 
@@ -3033,30 +3352,55 @@ export class NavalGymScene {
       bz: target.z,
       life: 0.65,
     };
+    this.keys.clear();
+    this.touchSteer = 0;
+    this.draggingCamera = false;
+    this.pendingBoardingTargetId = target.id;
+    this.activeEncounterModal = 'boarding';
+    this.emitHud();
+  }
 
-    const healAmt = Math.round(this.hullMaxHp * this.playerStats.boardingHealRatio);
-    this.hullHp = Math.min(this.hullMaxHp, this.hullHp + healAmt);
-    this.portCooldown *= 0.5;
-    this.stbdCooldown *= 0.5;
+  public resolveBoardingChoice(choice: BoardingSpoilChoice): void {
+    this.activeEncounterModal = null;
+    const targetId = this.pendingBoardingTargetId;
+    this.pendingBoardingTargetId = null;
+
+    const baseGold = Math.round(25 * this.playerStats.doubloonGainMult);
+    const res = resolveBoardingSpoils(choice, this.hullHp, this.hullMaxHp, this.abilities.stormRage, baseGold);
+    this.hullHp = res.nextHullHp;
+    this.runDoubloonsBonus += res.doubloonsGain;
+    this.abilities = { ...this.abilities, stormRage: res.nextStormRage };
+    if (res.resetCooldowns) {
+      this.portCooldown = 0;
+      this.stbdCooldown = 0;
+      this.abilities = { ...this.abilities, harpoonCooldown: 0, smokeCooldown: 0 };
+      this.ship = { ...this.ship, surgeCooldown: 0 };
+    } else {
+      this.portCooldown *= 0.5;
+      this.stbdCooldown *= 0.5;
+    }
+
     this.score += 150;
     this.boardedCount += 1;
-    this.runDoubloonsBonus += 25;
     this.morale = Math.min(100, this.morale + 12);
     this.recomputePlayerStats();
 
-    const waterY = sampleWaveHeight(target.x, target.z, this.elapsed, this.seaParams.waveHeight);
-    this.spawnFloatingText(
-      this.ship.x,
-      this.ship.heave + 5.2,
-      this.ship.z,
-      `${this.t().combatBoarded} (+${healAmt})`,
-      '#FFE082',
-      1.28,
-    );
-    this.spawnBurst(target.x, waterY + 2.2, target.z, 0xffc857, 16);
-    this.spawnRing(target.x, waterY + 0.7, target.z, '#FFD257', 7.5, 0.5);
-    this.setCallout(this.t().calloutBoardSuccess, 3.2);
-    this.handleEnemyDefeated(target, waterY, true);
+    const target = targetId !== null ? this.enemies.find((e) => e.id === targetId && e.alive) : undefined;
+    if (target) {
+      const waterY = sampleWaveHeight(target.x, target.z, this.elapsed, this.seaParams.waveHeight);
+      this.spawnFloatingText(
+        this.ship.x,
+        this.ship.heave + 5.2,
+        this.ship.z,
+        `${this.t().combatBoarded} (+${res.doubloonsGain}g)`,
+        '#FFE082',
+        1.28,
+      );
+      this.spawnBurst(target.x, waterY + 2.2, target.z, 0xffc857, 16);
+      this.spawnRing(target.x, waterY + 0.7, target.z, '#FFD257', 7.5, 0.5);
+      this.setCallout(this.t().calloutBoardSuccess, 3.2);
+      this.handleEnemyDefeated(target, waterY, true);
+    }
     this.emitHud();
   }
 
@@ -3088,11 +3432,22 @@ export class NavalGymScene {
       0.32,
       this.seaParams.crestThreshold + this.playerStats.crestThresholdOffset,
     );
+    const relicMods = computeRelicModifiers(this.activeRelics);
+    const mutMods = computeEndlessMutatorModifiers(this.activeMutators);
+    const { pointOfSail } = computeWindEfficiency(
+      this.ship.heading,
+      this.seaParams.windAngle,
+      this.playerStats.headwindBoost + relicMods.headwindSpeedBonus,
+    );
+    const headwindDmgMult =
+      (pointOfSail === 'irons' || pointOfSail === 'close') && relicMods.headwindDmgBonus > 0
+        ? 1 + relicMods.headwindDmgBonus
+        : 1;
     const spec = computeBroadsideShot(
       this.ammo,
       crestScore,
       effectiveCrestThreshold,
-      this.playerStats.damageMult,
+      this.playerStats.damageMult * headwindDmgMult,
       this.playerStats.extraProjectiles,
     );
 
@@ -3106,7 +3461,10 @@ export class NavalGymScene {
     }
 
     if (spec.crestBoosted && !stormWakeActive) {
-      const rageMult = computeContractModifiers(this.activeContracts).rageGainMult;
+      const rageMult =
+        computeContractModifiers(this.activeContracts).rageGainMult *
+        relicMods.rageGainMult *
+        mutMods.rageGainMult;
       this.abilities = gainStormRage(this.abilities, Math.round(16 * rageMult));
     }
 
@@ -3340,14 +3698,17 @@ export class NavalGymScene {
     radius: number,
     directEnemyId: number,
   ): void {
+    const relicMods = computeRelicModifiers(this.activeRelics);
+    const effRadius = radius * relicMods.aoeRadiusMult;
     this.audio.playExplosion();
     this.screenShake = Math.max(this.screenShake, 0.68);
     this.spawnBurst(x, waterY + 1.5, z, 0xff8c38, 16);
-    this.spawnRing(x, waterY + 0.55, z, '#FFB84D', radius * 1.15, 0.46);
+    this.spawnRing(x, waterY + 0.55, z, '#FFB84D', effRadius * 1.15, 0.46);
+    this.igniteOilSlicks(x, z, effRadius * 0.9);
     for (const enemy of this.enemies) {
       if (!enemy.alive || enemy.id === directEnemyId) continue;
       const d = Math.hypot(enemy.x - x, enemy.z - z);
-      const splashDmg = computeExplosionFalloff(d, radius, Math.round(baseDamage * 0.85));
+      const splashDmg = computeExplosionFalloff(d, effRadius, Math.round(baseDamage * 0.85));
       if (splashDmg > 0) {
         this.shotsHit += 1;
         const ey = sampleWaveHeight(
@@ -3412,9 +3773,8 @@ export class NavalGymScene {
   private spawnBurst(x: number, y: number, z: number, color: number, count: number): void {
     const mat = this.getSharedBurstMat(color);
     for (let i = 0; i < count; i += 1) {
-      const mesh = new THREE.Mesh(this.sharedBurstGeo, mat);
+      const mesh = this.acquireParticleMesh(this.sharedBurstGeo, mat);
       mesh.position.set(x, y, z);
-      this.scene.add(mesh);
       this.particles.push({
         mesh,
         vx: (Math.random() - 0.5) * 9,
@@ -3429,10 +3789,9 @@ export class NavalGymScene {
   private spawnSplinters(x: number, y: number, z: number, count: number): void {
     for (let i = 0; i < count; i += 1) {
       const mat = this.sharedSplinterMats[i % this.sharedSplinterMats.length];
-      const mesh = new THREE.Mesh(this.sharedSplinterGeo, mat);
+      const mesh = this.acquireParticleMesh(this.sharedSplinterGeo, mat);
       mesh.position.set(x, y, z);
       mesh.rotation.set(Math.random() * 3, Math.random() * 3, Math.random() * 3);
-      this.scene.add(mesh);
       this.particles.push({
         mesh,
         vx: (Math.random() - 0.5) * 13,
@@ -3604,6 +3963,31 @@ export class NavalGymScene {
   };
 
   private stepSimulation(dt: number): void {
+    // -1. Dynamic Resolution Scaling (non-software WebGL)
+    if (!this.isSoftwareGl) {
+      this.drsFrameAccum += dt;
+      this.drsFrameCount += 1;
+      this.drsTimer += dt;
+      if (this.drsTimer >= 1.2 && this.drsFrameCount > 0) {
+        const avgFps = this.drsFrameCount / Math.max(0.05, this.drsFrameAccum);
+        let nextDrs = this.drsScale;
+        if (avgFps < 46) nextDrs = Math.max(0.68, this.drsScale - 0.08);
+        else if (avgFps > 57) nextDrs = Math.min(1.0, this.drsScale + 0.05);
+        if (Math.abs(nextDrs - this.drsScale) >= 0.01) {
+          this.drsScale = nextDrs;
+          const preset = GRAPHICS_PRESETS[this.graphicsQuality] ?? GRAPHICS_PRESETS.high;
+          const pr = Math.min(window.devicePixelRatio || 1, preset.pixelRatioCap) * this.drsScale;
+          this.renderer.setPixelRatio(pr);
+          if (this.foamMaterial?.uniforms?.uPixelRatio) {
+            this.foamMaterial.uniforms.uPixelRatio.value = pr;
+          }
+        }
+        this.drsTimer = 0;
+        this.drsFrameAccum = 0;
+        this.drsFrameCount = 0;
+      }
+    }
+
     // 0. Traveling Rogue Swell lifecycle
     if (this.mode === 'playing') {
       if (this.rogueWave.active) {
@@ -3651,13 +4035,18 @@ export class NavalGymScene {
       this.sternLight.intensity =
         (stormActive ? 5.8 : 4.4) + Math.sin(this.elapsed * 6.4) * 0.45;
     }
+    const stormIntensityNow = this.getStormIntensity();
     this.oceanCtrl.update(
       this.elapsed,
       this.seaParams.waveHeight,
       this.seaParams.windAngle,
-      this.getStormIntensity(),
+      stormIntensityNow,
       this.rogueWave,
+      this.abilities.stormWakeTimer > 0 ? 1.0 : 0.28 + stormIntensityNow * 0.45,
+      this.lightningAlpha,
     );
+    this.audio.updateSeaAmbience(this.ship.speed / 12, stormIntensityNow);
+    this.playerBuilt.setHullDamageRatio?.(this.hullHp / Math.max(1, this.hullMaxHp));
 
     // 2. Headlands + Parallax
     for (const h of this.headlands) {
@@ -3687,6 +4076,8 @@ export class NavalGymScene {
 
     const stormWakeActive = this.abilities.stormWakeTimer > 0;
     const smokeActive = this.abilities.smokeTimer > 0;
+    const relicMods = computeRelicModifiers(this.activeRelics);
+    const mutMods = computeEndlessMutatorModifiers(this.activeMutators);
 
     this.ship = stepShipState(
       this.ship,
@@ -3696,10 +4087,50 @@ export class NavalGymScene {
       {
         speedMult: this.playerStats.speedMult * (stormWakeActive ? 1.45 : 1),
         turnMult: this.playerStats.turnMult * (stormWakeActive ? 1.18 : 1),
-        headwindBoost: stormWakeActive ? 0.72 : this.playerStats.headwindBoost,
+        headwindBoost: stormWakeActive
+          ? 0.72
+          : this.playerStats.headwindBoost + relicMods.headwindSpeedBonus,
         rogueWave: this.rogueWave,
       },
     );
+    this.clubhaulCreakCd = Math.max(0, this.clubhaulCreakCd - dt);
+    if (
+      this.mode === 'playing' &&
+      this.ship.sailLevel === 0 &&
+      this.ship.speed > 2.2 &&
+      Math.abs(steer) > 0.2
+    ) {
+      const cDirX = Math.sin(this.ship.heading);
+      const cDirZ = -Math.cos(this.ship.heading);
+      const cRightX = -cDirZ;
+      const cRightZ = cDirX;
+      const anchorX = this.ship.x - cDirX * 3.8;
+      const anchorZ = this.ship.z - cDirZ * 3.8;
+      const anchorY = sampleWaveHeight(anchorX, anchorZ, this.elapsed, this.seaParams.waveHeight) + 0.3;
+      if (Math.random() < 0.6) {
+        this.emitFoamParticle({
+          x: anchorX + (Math.random() - 0.5) * 0.8,
+          y: anchorY,
+          z: anchorZ + (Math.random() - 0.5) * 0.8,
+          vx: -cRightX * Math.sign(steer) * 3.4,
+          vy: 1.8 + Math.random() * 1.4,
+          vz: -cRightZ * Math.sign(steer) * 3.4,
+          life: 0.45,
+          startSize: 1.5,
+          endSize: 3.2,
+          alpha: 0.82,
+          r: 0.9,
+          g: 0.96,
+          b: 1.0,
+          gravity: 9.5,
+          onWater: false,
+        });
+      }
+      if (this.clubhaulCreakCd <= 0) {
+        this.audio.playWoodCreak(0.62);
+        this.clubhaulCreakCd = 1.1;
+      }
+    }
     if (this.mode === 'playing') {
       this.milesSailed += this.ship.speed * dt * 0.018;
       if (this.hullHp > 0 && this.hullHp < this.hullMaxHp && this.playerStats.hullRegenPerSec > 0) {
@@ -3708,6 +4139,14 @@ export class NavalGymScene {
           const healPts = Math.floor(this.surgeonHealAccum);
           this.surgeonHealAccum -= healPts;
           this.hullHp = Math.min(this.hullMaxHp, this.hullHp + healPts);
+          if (
+            this.activeOfficers.includes('surgeon') &&
+            this.hullHp <= this.hullMaxHp * 0.55 &&
+            this.elapsed - this.lastOfficerBarkSec >= 11
+          ) {
+            this.lastOfficerBarkSec = this.elapsed;
+            this.setCallout(this.et().barkSurgeonHeal, 3.0, 'surgeon');
+          }
         }
       }
     }
@@ -3822,13 +4261,13 @@ export class NavalGymScene {
     // 4. Cooldowns, abilities, dynamic weather shifts, whirlpools, storm lightning & callouts
     if (this.mode === 'playing') {
       const contractMods = computeContractModifiers(this.activeContracts);
-      if (contractMods.forceSquall) {
+      if (contractMods.forceSquall || mutMods.forceSquall) {
         if (this.weather !== 'squall') {
           this.weather = 'squall';
           const wSpec = WEATHER_SPECS.squall;
           this.seaParams = {
             ...this.seaParams,
-            waveHeight: Number((this.baseActWaveHeight * wSpec.waveMult).toFixed(2)),
+            waveHeight: Number((this.baseActWaveHeight * wSpec.waveMult * mutMods.waveHeightMult).toFixed(2)),
             windSpeed: Number((this.baseActWindSpeed * wSpec.windMult).toFixed(2)),
           };
         }
@@ -3841,7 +4280,7 @@ export class NavalGymScene {
           const wSpec = WEATHER_SPECS[this.weather];
           this.seaParams = {
             ...this.seaParams,
-            waveHeight: Number((this.baseActWaveHeight * wSpec.waveMult).toFixed(2)),
+            waveHeight: Number((this.baseActWaveHeight * wSpec.waveMult * mutMods.waveHeightMult).toFixed(2)),
             windSpeed: Number((this.baseActWindSpeed * wSpec.windMult).toFixed(2)),
           };
           if (this.weather !== 'squall' || !this.tryOfficerBark('squall')) {
@@ -4266,19 +4705,69 @@ export class NavalGymScene {
     const reloadMult = DIFFICULTY_SPECS[this.difficulty].enemyReloadMultiplier * contractEnemyReloadMult;
     for (const enemy of this.enemies) {
       if (!enemy.alive) continue;
-      if (enemy.isBoss && !enemy.bossEnraged && enemy.hp > 0 && enemy.hp <= enemy.maxHp * 0.5) {
+      if (
+        (enemy.isBoss || enemy.archetype === 'kraken' || (enemy.archetype === 'wraith' && enemy.id < 9000)) &&
+        !enemy.bossEnraged &&
+        enemy.hp > 0 &&
+        enemy.hp <= enemy.maxHp * 0.5
+      ) {
         enemy.bossEnraged = true;
         enemy.speed *= 1.18;
         enemy.built.setBossEnraged?.(true);
         const by = sampleWaveHeight(enemy.x, enemy.z, this.elapsed, this.seaParams.waveHeight);
-        this.spawnRing(enemy.x, by + 1.0, enemy.z, '#FF3B2E', 14.5, 0.72);
-        this.spawnBurst(enemy.x, by + 3.0, enemy.z, 0xff4936, 18);
-        this.audio.playBossHorn();
+        const ringColor =
+          enemy.archetype === 'kraken' ? '#62F2FF' : enemy.archetype === 'wraith' ? '#8CE2FF' : '#FF3B2E';
+        this.spawnRing(enemy.x, by + 1.0, enemy.z, ringColor, 14.5, 0.72);
+        this.spawnBurst(enemy.x, by + 3.0, enemy.z, enemy.archetype === 'kraken' ? 0x2a6d78 : 0xff4936, 18);
         this.screenShake = Math.max(this.screenShake, 0.85);
-        this.lightningAlpha = Math.max(this.lightningAlpha, 0.72);
-        if (this.mode === 'playing') {
-          this.spawnEnemyShot(enemy);
-          this.onBossPhase2?.(this.act, ACT_SPECS[this.act].bossKey);
+        if (enemy.archetype === 'kraken') {
+          this.audio.playKrakenRoar();
+          for (let k = 0; k < 7; k += 1) {
+            const { mesh } = this.acquireSmokePuff(0x131b2e);
+            mesh.position.set(
+              enemy.x + (Math.random() - 0.5) * 6,
+              by + 1.5 + Math.random() * 1.4,
+              enemy.z + (Math.random() - 0.5) * 6,
+            );
+            mesh.scale.setScalar(1.8);
+            this.smokePuffs.push({
+              mesh,
+              vx: (Math.random() - 0.5) * 3.6,
+              vy: 0.7 + Math.random() * 0.6,
+              vz: (Math.random() - 0.5) * 3.6,
+              life: 2.6,
+              maxLife: 2.6,
+              baseScale: 1.8,
+            });
+          }
+          this.ship = { ...this.ship, speed: this.ship.speed * 0.72 };
+        } else if (enemy.archetype === 'wraith' && this.mode === 'playing') {
+          this.audio.playBossHorn();
+          const decoyX = Math.max(-105, Math.min(105, enemy.x + (Math.random() > 0.5 ? 16 : -16)));
+          const decoyZ = Math.max(-105, Math.min(105, enemy.z + 12));
+          const decoy = this.createEnemyShip({
+            id: 9000 + enemy.id,
+            archetype: 'wraith',
+            scale: 0.92,
+            x: decoyX,
+            z: decoyZ,
+            hp: Math.max(30, Math.round(enemy.maxHp * 0.42)),
+            speed: enemy.speed * 1.05,
+            orbitRadius: Math.max(24, enemy.orbitRadius - 6),
+            orbitAngle: enemy.orbitAngle + 0.8,
+            fireTimer: 2.2,
+          });
+          decoy.shieldBroken = true;
+          decoy.built.setSpecialShieldBroken?.(true);
+          this.enemies.push(decoy);
+          this.targetShips += 1;
+        } else if (enemy.isBoss) {
+          this.audio.playBossHorn();
+          this.lightningAlpha = Math.max(this.lightningAlpha, 0.72);
+          if (this.mode === 'playing') {
+            this.spawnEnemyShot(enemy);
+            this.onBossPhase2?.(this.act, ACT_SPECS[this.act].bossKey);
+          }
         }
         this.emitHud();
       }
@@ -4606,6 +5095,20 @@ export class NavalGymScene {
           this.spawnFloatingText(prop.x, py + 4.2, prop.z, this.t().combatPowder, '#7BE0FF', 1.18);
           this.spawnRing(prop.x, py + 0.5, prop.z, '#7BE0FF', 4.6, 0.4);
           this.spawnBurst(prop.x, py + 1.2, prop.z, 0x7be0ff, 10);
+        } else if (prop.kind === 'bottle') {
+          let tx = Math.max(-96, Math.min(96, this.ship.x + (Math.random() > 0.5 ? 46 : -46)));
+          let tz = Math.max(-96, Math.min(96, this.ship.z + (Math.random() > 0.5 ? -38 : 38)));
+          for (const obs of this.headlandObstacles) {
+            if (Math.hypot(tx - obs.x, tz - obs.z) < obs.radius + 9) {
+              tx = tx > 0 ? -42 : 42;
+              tz = -18;
+            }
+          }
+          this.treasureSpot = { x: tx, z: tz, collected: false };
+          this.setCallout(this.et().calloutBottlePicked, 4.0, 'navigator');
+          this.spawnFloatingText(prop.x, py + 4.4, prop.z, 'X', '#FFE082', 1.3);
+          this.spawnRing(prop.x, py + 0.5, prop.z, '#FFE082', 5.2, 0.45);
+          this.spawnBurst(prop.x, py + 1.2, prop.z, 0xffe082, 12);
         } else {
           this.score += 180;
           this.runDoubloonsBonus += 45;
@@ -4615,6 +5118,161 @@ export class NavalGymScene {
           this.spawnBurst(prop.x, py + 1.2, prop.z, 0xffd257, 10);
         }
       }
+    }
+
+    // 5d. Treasure Spot excavation, Oil Slick burning, Chain Lightning arcs, Escort Convoy
+    if (this.treasureSpot && !this.treasureSpot.collected && this.mode === 'playing') {
+      const td = Math.hypot(this.treasureSpot.x - this.ship.x, this.treasureSpot.z - this.ship.z);
+      if (td < 8.5) {
+        this.treasureSpot.collected = true;
+        const ty = sampleWaveHeight(
+          this.treasureSpot.x,
+          this.treasureSpot.z,
+          this.elapsed,
+          this.seaParams.waveHeight,
+        );
+        const newRelic = pickRandomUnownedRelic(this.activeRelics, Math.random());
+        if (newRelic) {
+          this.activeRelics.push(newRelic);
+          this.recomputePlayerStats();
+        }
+        const bonus = Math.round(55 * this.playerStats.doubloonGainMult);
+        this.runDoubloonsBonus += bonus;
+        this.score += 320;
+        this.audio.playBoarding();
+        this.emitWorldCoinFly(this.treasureSpot.x, ty + 1.6, this.treasureSpot.z, 8);
+        this.spawnRing(this.treasureSpot.x, ty + 0.6, this.treasureSpot.z, '#FFE082', 9.0, 0.55);
+        this.spawnBurst(this.treasureSpot.x, ty + 2.0, this.treasureSpot.z, 0xffd257, 20);
+        this.spawnFloatingText(
+          this.treasureSpot.x,
+          ty + 4.8,
+          this.treasureSpot.z,
+          `+${bonus}g`,
+          '#FFE082',
+          1.28,
+        );
+        this.onLogUnlock?.('logBottleTreasure');
+        if (this.elapsed - this.lastOfficerBarkSec >= 11) {
+          this.lastOfficerBarkSec = this.elapsed;
+          this.setCallout(this.et().barkTreasureFound, 3.4, 'navigator');
+        } else {
+          this.setCallout(this.et().calloutTreasureDug, 3.4);
+        }
+        this.emitHud();
+      }
+    }
+
+    for (let i = this.oilSlicks.length - 1; i >= 0; i -= 1) {
+      const slick = this.oilSlicks[i];
+      slick.life -= dt;
+      if (slick.ignited) {
+        slick.igniteTimer -= dt;
+        if (Math.random() < 0.45) {
+          const ang = Math.random() * Math.PI * 2;
+          const rad = Math.random() * slick.radius * 0.75;
+          const fx = slick.x + Math.cos(ang) * rad;
+          const fz = slick.z + Math.sin(ang) * rad;
+          const fy = sampleWaveHeight(fx, fz, this.elapsed, this.seaParams.waveHeight) + 0.35;
+          this.emitFoamParticle({
+            x: fx,
+            y: fy,
+            z: fz,
+            vx: (Math.random() - 0.5) * 1.4,
+            vy: 2.2 + Math.random() * 1.8,
+            vz: (Math.random() - 0.5) * 1.4,
+            life: 0.48,
+            startSize: 1.8,
+            endSize: 0.6,
+            alpha: 0.85,
+            r: 1.0,
+            g: 0.45 + Math.random() * 0.25,
+            b: 0.12,
+            gravity: -1.2,
+            onWater: false,
+          });
+        }
+        if (this.mode === 'playing') {
+          slick.tickAccum += dt;
+          const doTick = slick.tickAccum >= 0.45;
+          if (doTick) slick.tickAccum -= 0.45;
+          for (const enemy of this.enemies) {
+            if (!enemy.alive) continue;
+            if (Math.hypot(enemy.x - slick.x, enemy.z - slick.z) <= slick.radius + 3.5) {
+              const dps = 9 * this.playerStats.burnDamageMult * dt;
+              enemy.hp -= dps;
+              if (doTick) {
+                const ey = sampleWaveHeight(enemy.x, enemy.z, this.elapsed, this.seaParams.waveHeight);
+                this.spawnFloatingText(
+                  enemy.x,
+                  ey + 4.4,
+                  enemy.z,
+                  `-${Math.max(1, Math.round(9 * this.playerStats.burnDamageMult * 0.45))}`,
+                  '#FF8A3D',
+                  0.95,
+                );
+              }
+              if (enemy.hp <= 0) {
+                const ey = sampleWaveHeight(enemy.x, enemy.z, this.elapsed, this.seaParams.waveHeight);
+                this.handleEnemyDefeated(enemy, ey, false);
+              }
+            }
+          }
+        }
+        if (slick.igniteTimer <= 0) {
+          this.oilSlicks.splice(i, 1);
+          continue;
+        }
+      }
+      if (slick.life <= 0) {
+        this.oilSlicks.splice(i, 1);
+      }
+    }
+
+    for (let i = this.lightningArcs.length - 1; i >= 0; i -= 1) {
+      this.lightningArcs[i].life -= dt;
+      if (this.lightningArcs[i].life <= 0) {
+        this.lightningArcs.splice(i, 1);
+      }
+    }
+
+    if (this.escortConvoy && this.escortConvoy.alive) {
+      const targetX = Math.max(-94, Math.min(94, this.ship.x - Math.sin(this.ship.heading) * 18));
+      const targetZ = Math.max(-94, Math.min(94, this.ship.z + Math.cos(this.ship.heading) * 18));
+      const dx = targetX - this.escortConvoy.x;
+      const dz = targetZ - this.escortConvoy.z;
+      const distC = Math.hypot(dx, dz);
+      if (distC > 6.5) {
+        const desiredHeading = normalizeAngle(Math.atan2(dx, -dz));
+        const diff = normalizeAngle(desiredHeading - this.escortConvoy.heading);
+        this.escortConvoy.heading = normalizeAngle(
+          this.escortConvoy.heading + Math.max(-1.4 * dt, Math.min(1.4 * dt, diff)),
+        );
+        this.escortConvoy.x += Math.sin(this.escortConvoy.heading) * this.escortConvoy.speed * dt;
+        this.escortConvoy.z -= Math.cos(this.escortConvoy.heading) * this.escortConvoy.speed * dt;
+      }
+      if (this.activeOfficers.includes('surgeon') && this.escortConvoy.hp < this.escortConvoy.maxHp) {
+        this.escortConvoy.hp = Math.min(this.escortConvoy.maxHp, this.escortConvoy.hp + 1.2 * dt);
+      }
+      this.escortConvoy.hitFlash = Math.max(0, this.escortConvoy.hitFlash - dt * 4);
+      this.escortConvoy.built.setHitFlash?.(this.escortConvoy.hitFlash);
+      const cy = sampleWaveHeight(
+        this.escortConvoy.x,
+        this.escortConvoy.z,
+        this.elapsed,
+        this.seaParams.waveHeight,
+      );
+      this.escortConvoy.built.root.position.set(this.escortConvoy.x, cy, this.escortConvoy.z);
+      this.escortConvoy.built.root.rotation.set(0, -this.escortConvoy.heading, 0);
+      this.escortConvoy.built.visualBody.rotation.set(
+        Math.sin(this.elapsed * 2 + 1) * 0.04,
+        0,
+        Math.cos(this.elapsed * 1.6) * 0.04,
+      );
+      this.escortConvoy.built.updateAnimation(
+        this.elapsed + 3.1,
+        1,
+        distC > 6.5 ? this.escortConvoy.speed : 1.2,
+      );
     }
 
     // Update player & enemy transforms after collision & whirlpool resolution
@@ -4630,6 +5288,7 @@ export class NavalGymScene {
       enemy.hitFlash = Math.max(0, enemy.hitFlash - dt * 4.2);
       enemy.built.setHitFlash?.(enemy.hitFlash);
       enemy.built.setTelegraphFlash?.(enemy.telegraphTimer);
+      enemy.built.setHullDamageRatio?.(enemy.hp / Math.max(1, enemy.maxHp));
 
       enemy.built.root.position.set(enemy.x, ey, enemy.z);
       enemy.built.root.rotation.set(0, -enemy.heading, 0);
@@ -4808,7 +5467,8 @@ export class NavalGymScene {
             const rendMult = enemy.armorRendTimer > 0 ? 1.22 : 1.0;
             const baseActual =
               armored && !eff.piercesShield ? Math.max(2, Math.round(p.damage * pierceRatio)) : p.damage;
-            const actualDmg = Math.round(baseActual * rendMult);
+            const rakeMult = computeRakingShotMultiplier(p.vx, p.vz, enemy.heading);
+            const actualDmg = Math.round(baseActual * rendMult * rakeMult);
 
             enemy.hp -= actualDmg;
             enemy.hitFlash = 1;
@@ -4844,6 +5504,24 @@ export class NavalGymScene {
             enemy.squashVel = 2.4;
             this.score += p.crestBoosted ? 35 : 20;
             this.audio.playHit();
+            if (rakeMult > 1.1) {
+              this.audio.playRakingCrit();
+              this.spawnFloatingText(
+                enemy.x,
+                waterY + 6.8,
+                enemy.z,
+                `${this.et().combatRake} ×${rakeMult.toFixed(1)}`,
+                '#FFE082',
+                1.22,
+              );
+              if (this.elapsed - this.lastOfficerBarkSec >= 11) {
+                this.lastOfficerBarkSec = this.elapsed;
+                this.setCallout(this.et().barkRakingCrit, 3.0, 'gunner');
+              }
+            }
+            if (p.ammo === 'incendiary' || p.ammo === 'mortar') {
+              this.igniteOilSlicks(p.x, p.z, 5.5);
+            }
             this.screenShake = Math.max(this.screenShake, p.crestBoosted ? 0.58 : 0.34);
             if (p.crestBoosted) {
               this.hitstopTimer = Math.max(this.hitstopTimer, 0.032);
@@ -4916,6 +5594,56 @@ export class NavalGymScene {
               this.detonatePlayerMortar(p.x, waterY, p.z, p.damage, eff.splashRadius, enemy.id);
             }
 
+            if (
+              (p.ammo === 'chain' || p.ammo === 'harpoonBolt') &&
+              (this.weather === 'squall' || stormWakeActive || relicMods.squallChainLightningDmg > 0)
+            ) {
+              let chainTarget: EnemyShip | null = null;
+              let chainBest = 26;
+              for (const other of this.enemies) {
+                if (!other.alive || other.id === enemy.id) continue;
+                const d = Math.hypot(other.x - enemy.x, other.z - enemy.z);
+                if (d < chainBest) {
+                  chainBest = d;
+                  chainTarget = other;
+                }
+              }
+              if (chainTarget) {
+                const arcDmg = Math.round(
+                  (relicMods.squallChainLightningDmg || 22) * this.playerStats.damageMult,
+                );
+                chainTarget.hp -= arcDmg;
+                chainTarget.hitFlash = 1;
+                const cy = sampleWaveHeight(
+                  chainTarget.x,
+                  chainTarget.z,
+                  this.elapsed,
+                  this.seaParams.waveHeight,
+                );
+                this.lightningArcs.push({
+                  ax: enemy.x,
+                  ay: waterY + 2.6,
+                  az: enemy.z,
+                  bx: chainTarget.x,
+                  by: cy + 2.6,
+                  bz: chainTarget.z,
+                  life: 0.28,
+                });
+                this.audio.playLightningZap();
+                this.spawnFloatingText(
+                  chainTarget.x,
+                  cy + 5.2,
+                  chainTarget.z,
+                  `${this.et().combatArcZap} -${arcDmg}`,
+                  '#7BE0FF',
+                  1.12,
+                );
+                if (chainTarget.hp <= 0) {
+                  this.handleEnemyDefeated(chainTarget, cy, false);
+                }
+              }
+            }
+
             if (enemy.hp <= 0) {
               this.handleEnemyDefeated(enemy, waterY, false);
             }
@@ -4924,11 +5652,38 @@ export class NavalGymScene {
           }
         }
       } else if (!remove && this.mode === 'playing') {
+        if (
+          this.escortConvoy &&
+          this.escortConvoy.alive &&
+          Math.hypot(p.x - this.escortConvoy.x, p.z - this.escortConvoy.z) < 3.6 &&
+          p.y < 5.5
+        ) {
+          this.escortConvoy.hp = Math.max(0, this.escortConvoy.hp - p.damage);
+          this.escortConvoy.hitFlash = 1;
+          this.audio.playHit();
+          this.spawnBurst(p.x, p.y, p.z, 0xff9e44, 8);
+          this.spawnFloatingText(
+            this.escortConvoy.x,
+            p.y + 3.4,
+            this.escortConvoy.z,
+            `-${p.damage}`,
+            '#FF9C7A',
+            1.05,
+          );
+          if (this.escortConvoy.hp <= 0) {
+            this.escortConvoy.alive = false;
+            this.scene.remove(this.escortConvoy.built.root);
+            this.escortConvoy = null;
+            this.setCallout(this.et().calloutConvoyLost, 3.6);
+          }
+          remove = true;
+        }
         const distPlayer = Math.hypot(p.x - this.ship.x, p.z - this.ship.z);
         // Wave Surge leaps cleanly over low enemy shots!
-        if (distPlayer < 3.6 && this.ship.surgeY < 1.35 && p.y < 5.5) {
-          this.hullHp = Math.max(0, this.hullHp - p.damage);
-          if (p.damage >= 12) {
+        if (!remove && distPlayer < 3.6 && this.ship.surgeY < 1.35 && p.y < 5.5) {
+          const playerHitDmg = Math.round(p.damage * (1 + mutMods.armorPenalty));
+          this.hullHp = Math.max(0, this.hullHp - playerHitDmg);
+          if (playerHitDmg >= 12) {
             this.morale = Math.max(15, this.morale - 3);
             this.recomputePlayerStats();
           }
@@ -4941,7 +5696,7 @@ export class NavalGymScene {
             this.ship.x,
             this.ship.heave + 4.8,
             this.ship.z,
-            `-${p.damage}`,
+            `-${playerHitDmg}`,
             '#FF5A4E',
             1.15,
           );
@@ -5002,7 +5757,7 @@ export class NavalGymScene {
       }
       pt.mesh.scale.setScalar(Math.max(0.05, pt.life / pt.maxLife));
       if (pt.life <= 0) {
-        this.scene.remove(pt.mesh);
+        this.releaseParticleMesh(pt.mesh);
         this.particles.splice(i, 1);
       }
     }
@@ -5039,8 +5794,7 @@ export class NavalGymScene {
       sp.mesh.scale.setScalar(grow);
       (sp.mesh.material as THREE.MeshBasicMaterial).opacity = ratio * 0.52;
       if (sp.life <= 0) {
-        this.scene.remove(sp.mesh);
-        (sp.mesh.material as THREE.Material).dispose();
+        this.releaseSmokePuff(sp.mesh);
         this.smokePuffs.splice(i, 1);
       }
     }
@@ -5077,11 +5831,12 @@ export class NavalGymScene {
     );
 
     this.parallaxEnv.update(this.elapsed, this.camera.position.x, this.camera.position.z);
-    this.seagullFlock?.update(
-      this.elapsed,
-      this.lighthouseCenter?.x ?? this.ship.x,
-      this.lighthouseCenter?.z ?? this.ship.z,
-    );
+    const activeWreck = this.wreckageSites.find((w) => w.active);
+    const gullTarget =
+      this.treasureSpot && !this.treasureSpot.collected
+        ? this.treasureSpot
+        : activeWreck ?? this.lighthouseCenter ?? this.ship;
+    this.seagullFlock?.update(this.elapsed, gullTarget.x, gullTarget.z);
 
     this.hudEmitTimer += dt;
     if (this.hudEmitTimer >= 0.08) {
@@ -5674,6 +6429,8 @@ export class NavalGymScene {
     prop.alive = false;
     this.scene.remove(prop.built.group);
 
+    const relicMods = computeRelicModifiers(this.activeRelics);
+    this.spawnOilSlick(prop.x, prop.z, 9.2 * relicMods.aoeRadiusMult, true);
     const waterY = sampleWaveHeight(prop.x, prop.z, this.elapsed, this.seaParams.waveHeight);
     this.audio.playExplosion();
     this.screenShake = Math.max(this.screenShake, 1.05);
@@ -5686,7 +6443,7 @@ export class NavalGymScene {
     for (const enemy of this.enemies) {
       if (!enemy.alive) continue;
       const d = Math.hypot(enemy.x - prop.x, enemy.z - prop.z);
-      const dmg = computeExplosionFalloff(d, 18, 52);
+      const dmg = computeExplosionFalloff(d, 18 * relicMods.aoeRadiusMult, 52);
       if (dmg > 0) {
         enemy.hp -= dmg;
         enemy.hitFlash = 1;
@@ -5700,7 +6457,7 @@ export class NavalGymScene {
       }
     }
 
-    if (this.mode === 'playing') {
+    if (this.mode === 'playing' && !relicMods.barrelImmunity) {
       const dp = Math.hypot(this.ship.x - prop.x, this.ship.z - prop.z);
       const pdmg = computeExplosionFalloff(dp, 15, 26);
       if (pdmg > 0) {
@@ -5726,10 +6483,21 @@ export class NavalGymScene {
     if (enemy.archetype === 'kraken' || enemy.archetype === 'wraith') {
       this.monstersSunk += 1;
     }
+    if (enemy.archetype === 'kraken') {
+      this.onLogUnlock?.('logKrakenSlain');
+    }
+    this.spawnOilSlick(enemy.x, enemy.z, enemy.isBoss ? 11 : 7.5, false);
+    const relicMods = computeRelicModifiers(this.activeRelics);
+    if (relicMods.healPerKill > 0 && this.hullHp > 0) {
+      this.hullHp = Math.min(this.hullMaxHp, this.hullHp + relicMods.healPerKill);
+    }
     this.morale = Math.min(100, this.morale + 8);
     this.recomputePlayerStats();
     if (enemy.isBoss) {
       this.runBossesDefeated += 1;
+      if (this.act === 1) this.onLogUnlock?.('logCrimsonFang');
+      else if (this.act === 2) this.onLogUnlock?.('logAshenPyre');
+      else if (this.act === 3) this.onLogUnlock?.('logBlackSovereign');
     }
     this.score += enemy.isBoss || enemy.archetype === 'kraken' ? 500 : enemy.archetype === 'seafort' ? 400 : 250;
     const nextStreak = stepComboStreak(this.comboStreak, this.comboTimer, 0, true);
@@ -5739,7 +6507,10 @@ export class NavalGymScene {
     if (this.comboStreak >= 2) {
       this.score += (this.comboStreak - 1) * 50;
     }
-    const rageGainMult = computeContractModifiers(this.activeContracts).rageGainMult;
+    const rageGainMult =
+      computeContractModifiers(this.activeContracts).rageGainMult *
+      relicMods.rageGainMult *
+      computeEndlessMutatorModifiers(this.activeMutators).rageGainMult;
     this.abilities = gainStormRage(
       this.abilities,
       Math.round((viaBoarding ? 35 : 28) * rageGainMult),
@@ -5772,18 +6543,58 @@ export class NavalGymScene {
       }
     }
 
-    // Drop glowing supply / powder / gold crate
+    // Drop glowing supply / powder / gold crate + occasional Message-in-a-Bottle
     const lootTable: Array<'repair' | 'powder' | 'gold'> = ['repair', 'powder', 'gold'];
     const lootKind = lootTable[this.sunkCount % lootTable.length];
     this.spawnProp(lootKind, enemy.x, enemy.z);
+    if (!this.treasureSpot && this.sunkCount % 5 === 2) {
+      this.spawnProp('bottle', enemy.x + 4, enemy.z - 3);
+    }
 
     if (this.mode !== 'playing') return;
     const anyAlive = this.enemies.some((e) => e.alive);
     if (!anyAlive) {
+      if (this.escortConvoy && this.escortConvoy.alive) {
+        const reward = Math.round(90 * this.playerStats.doubloonGainMult);
+        this.runDoubloonsBonus += reward;
+        this.score += 450;
+        const bonusRelic = pickRandomUnownedRelic(this.activeRelics, Math.random());
+        if (bonusRelic) {
+          this.activeRelics.push(bonusRelic);
+          this.recomputePlayerStats();
+        }
+        this.onLogUnlock?.('logConvoyEscorted');
+        this.emitWorldCoinFly(this.escortConvoy.x, 3, this.escortConvoy.z, 8);
+        this.scene.remove(this.escortConvoy.built.root);
+        this.escortConvoy = null;
+        this.setCallout(this.et().barkConvoySafe, 3.8, 'bosun');
+      }
+
       if (this.playMode === 'endless') {
-        this.spawnEndlessNextWave();
+        if ((this.wave + 1) % 3 === 0) {
+          this.mutatorChoices = pickEndlessMutators(this.activeMutators, Math.random());
+          this.pendingNextWaveMode = 'endlessNext';
+          this.activeEncounterModal = 'mutator';
+          this.keys.clear();
+          this.touchSteer = 0;
+          this.emitHud();
+        } else if ((this.wave + 1) % 2 === 1) {
+          this.routeChoices = pickRouteChoices(Math.random());
+          this.pendingNextWaveMode = 'endlessNext';
+          this.activeEncounterModal = 'route';
+          this.keys.clear();
+          this.touchSteer = 0;
+          this.emitHud();
+        } else {
+          this.spawnEndlessNextWave();
+        }
       } else if (this.wave === 1) {
-        this.spawnWave2Flagship();
+        this.routeChoices = pickRouteChoices(Math.random());
+        this.pendingNextWaveMode = 'campaignWave2';
+        this.activeEncounterModal = 'route';
+        this.keys.clear();
+        this.touchSteer = 0;
+        this.emitHud();
       } else {
         this.score += 800;
         this.setCallout(this.t().calloutVictory, 4.0);
@@ -5880,8 +6691,11 @@ export class NavalGymScene {
           const ramDmgToEnemy = Math.round(
             col.damageToB * this.playerStats.ramBonusMult * stormRamMult * plungingMult,
           );
-          const ramSelfDmg =
-            this.abilities.stormWakeTimer > 0 ? Math.round(col.damageToA * 0.25) : col.damageToA;
+          const colReduction = computeRelicModifiers(this.activeRelics).collisionReduction;
+          const ramSelfDmg = Math.round(
+            (this.abilities.stormWakeTimer > 0 ? col.damageToA * 0.25 : col.damageToA) *
+              (1 - colReduction),
+          );
           enemy.hp -= ramDmgToEnemy;
           enemy.hitFlash = 1;
           this.score += col.aRamming ? 30 : 15;
@@ -5992,12 +6806,14 @@ export class NavalGymScene {
           this.spawnRing(playerHit.contactX, waterY + 0.5, playerHit.contactZ, '#FF7D4D', 4.5, 0.38);
 
           if (this.mode === 'playing') {
-            this.hullHp = Math.max(0, this.hullHp - playerHit.damage);
+            const colReduction = computeRelicModifiers(this.activeRelics).collisionReduction;
+            const reefDmg = Math.round(playerHit.damage * (1 - colReduction));
+            this.hullHp = Math.max(0, this.hullHp - reefDmg);
             this.spawnFloatingText(
               this.ship.x,
               this.ship.heave + 4.6,
               this.ship.z,
-              `${this.t().combatReef} -${playerHit.damage}`,
+              `${this.t().combatReef} -${reefDmg}`,
               '#FF6D4D',
               1.1,
             );
@@ -6117,26 +6933,96 @@ export class NavalGymScene {
     }
     ctx.restore();
 
-    // 2. Wake foam dots behind ship (bioluminescent turquoise-gold glow during Storm Wake)
-    for (const node of this.wakeNodes) {
-      const p = this.projectToScreen(node.x, node.y, node.z);
-      if (!p.visible) continue;
-      const ratio = node.life / node.maxLife;
-      const alpha = ratio * (node.storm ? 0.56 : 0.34);
-      const rad = node.size * (1.25 - ratio * 0.35);
-      if (node.storm) {
-        this.drawGlowHalo(
-          p.x,
-          p.y,
-          rad * 1.9,
-          `rgba(123, 224, 255, ${(alpha * 0.85).toFixed(3)})`,
-          `rgba(255, 208, 112, ${(alpha * 0.32).toFixed(3)})`,
-        );
+    // 2. Continuous dual V-Wake Ribbon behind ship (turquoise-gold glow during Storm Wake)
+    if (this.wakeNodes.length >= 2) {
+      const portPts: Array<{ x: number; y: number; alpha: number; storm: boolean }> = [];
+      const stbdPts: Array<{ x: number; y: number; alpha: number; storm: boolean }> = [];
+      for (let i = 0; i < this.wakeNodes.length; i += 1) {
+        const node = this.wakeNodes[i];
+        const prev = this.wakeNodes[Math.max(0, i - 1)];
+        const next = this.wakeNodes[Math.min(this.wakeNodes.length - 1, i + 1)];
+        const tx = next.x - prev.x;
+        const tz = next.z - prev.z;
+        const len = Math.max(0.01, Math.hypot(tx, tz));
+        const nx = -tz / len;
+        const nz = tx / len;
+        const ratio = Math.max(0, Math.min(1, node.life / node.maxLife));
+        const halfSpread = 1.05 + (1 - ratio) * (node.storm ? 4.4 : 3.2);
+        const pL = this.projectToScreen(node.x - nx * halfSpread, node.y, node.z - nz * halfSpread);
+        const pR = this.projectToScreen(node.x + nx * halfSpread, node.y, node.z + nz * halfSpread);
+        if (pL.visible) {
+          portPts.push({ x: pL.x, y: pL.y, alpha: ratio, storm: Boolean(node.storm) });
+        }
+        if (pR.visible) {
+          stbdPts.push({ x: pR.x, y: pR.y, alpha: ratio, storm: Boolean(node.storm) });
+        }
+      }
+      ctx.save();
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+      for (const pts of [portPts, stbdPts]) {
+        for (let i = 1; i < pts.length; i += 1) {
+          const a = pts[i - 1];
+          const b = pts[i];
+          const alpha = b.alpha * (b.storm ? 0.62 : 0.36);
+          ctx.strokeStyle = b.storm
+            ? `rgba(123, 224, 255, ${alpha.toFixed(3)})`
+            : `rgba(176, 222, 250, ${alpha.toFixed(3)})`;
+          ctx.lineWidth = (b.storm ? 4.2 : 2.8) + (1 - b.alpha) * 2.4;
+          ctx.beginPath();
+          ctx.moveTo(a.x, a.y);
+          ctx.lineTo(b.x, b.y);
+          ctx.stroke();
+        }
+      }
+      ctx.restore();
+    }
+
+    // 2a-0. Oil Slicks on water surface (dark iridescent sheen or flickering fire ring)
+    for (const slick of this.oilSlicks) {
+      const sy = sampleWaveHeight(slick.x, slick.z, this.elapsed, this.seaParams.waveHeight);
+      const center = this.projectToScreen(slick.x, sy + 0.16, slick.z);
+      const edge = this.projectToScreen(slick.x + slick.radius, sy + 0.16, slick.z);
+      if (!center.visible) continue;
+      const rx = Math.max(12, Math.min(115, Math.hypot(edge.x - center.x, edge.y - center.y)));
+      const ry = rx * 0.56;
+      ctx.save();
+      if (slick.ignited) {
+        const flicker = 0.42 + 0.18 * Math.sin(this.elapsed * 16 + slick.x);
+        ctx.fillStyle = `rgba(255, 112, 36, ${(flicker * 0.42).toFixed(3)})`;
+        ctx.strokeStyle = `rgba(255, 198, 86, ${(flicker + 0.25).toFixed(3)})`;
+        ctx.lineWidth = 2.2;
       } else {
-        ctx.fillStyle = `rgba(148, 204, 244, ${alpha.toFixed(3)})`;
+        const fade = Math.min(1, slick.life / Math.max(1, slick.maxLife));
+        ctx.fillStyle = `rgba(24, 20, 38, ${(0.42 * fade).toFixed(3)})`;
+        ctx.strokeStyle = `rgba(116, 98, 178, ${(0.38 * fade).toFixed(3)})`;
+        ctx.lineWidth = 1.4;
+      }
+      ctx.beginPath();
+      ctx.ellipse(center.x, center.y, rx, ry, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    // 2a-1. Treasure X spot on water surface
+    if (this.treasureSpot && !this.treasureSpot.collected) {
+      const ty = sampleWaveHeight(this.treasureSpot.x, this.treasureSpot.z, this.elapsed, this.seaParams.waveHeight);
+      const ts = this.projectToScreen(this.treasureSpot.x, ty + 0.3, this.treasureSpot.z);
+      if (ts.visible) {
+        const pulse = 1 + Math.sin(this.elapsed * 5.2) * 0.14;
+        const r = 11 * pulse;
+        ctx.save();
+        ctx.strokeStyle = 'rgba(255, 224, 130, 0.94)';
+        ctx.lineWidth = 3.2;
+        ctx.lineCap = 'round';
         ctx.beginPath();
-        ctx.arc(p.x, p.y, rad, 0, Math.PI * 2);
-        ctx.fill();
+        ctx.moveTo(ts.x - r, ts.y - r * 0.7);
+        ctx.lineTo(ts.x + r, ts.y + r * 0.7);
+        ctx.moveTo(ts.x + r, ts.y - r * 0.7);
+        ctx.lineTo(ts.x - r, ts.y + r * 0.7);
+        ctx.stroke();
+        ctx.restore();
       }
     }
 
@@ -6457,6 +7343,27 @@ export class NavalGymScene {
       }
     }
 
+    // Chain Lightning jagged arcs
+    for (const arc of this.lightningArcs) {
+      const aScreen = this.projectToScreen(arc.ax, arc.ay, arc.az);
+      const bScreen = this.projectToScreen(arc.bx, arc.by, arc.bz);
+      if (!aScreen.visible || !bScreen.visible) continue;
+      const alpha = Math.max(0, Math.min(1, arc.life / 0.28));
+      ctx.strokeStyle = `rgba(140, 232, 255, ${alpha.toFixed(3)})`;
+      ctx.lineWidth = 2.8;
+      ctx.beginPath();
+      ctx.moveTo(aScreen.x, aScreen.y);
+      const segs = 4;
+      for (let s = 1; s < segs; s += 1) {
+        const u = s / segs;
+        const jx = (Math.random() - 0.5) * 18;
+        const jy = (Math.random() - 0.5) * 18;
+        ctx.lineTo(aScreen.x + (bScreen.x - aScreen.x) * u + jx, aScreen.y + (bScreen.y - aScreen.y) * u + jy);
+      }
+      ctx.lineTo(bScreen.x, bScreen.y);
+      ctx.stroke();
+    }
+
     // Expanding water-surface hit/muzzle shockwave ellipses
     for (const r of this.flashRings) {
       const sp = this.projectToScreen(r.x, r.y, r.z);
@@ -6578,6 +7485,55 @@ export class NavalGymScene {
       ctx.fillRect(sp.x - barW / 2 - 1, sp.y - 1, barW + 2, 7);
       ctx.fillStyle = showShield ? '#62F2FF' : enemy.isBoss ? '#F4C97A' : '#D94336';
       ctx.fillRect(sp.x - barW / 2, sp.y, barW * ratio, 5);
+    }
+
+    // Escort Convoy emerald HP bar
+    if (this.escortConvoy && this.escortConvoy.alive) {
+      const cy = sampleWaveHeight(
+        this.escortConvoy.x,
+        this.escortConvoy.z,
+        this.elapsed,
+        this.seaParams.waveHeight,
+      );
+      const cp = this.projectToScreen(this.escortConvoy.x, cy + 8.6, this.escortConvoy.z);
+      if (cp.visible) {
+        const barW = 62;
+        const ratio = Math.max(0, this.escortConvoy.hp / this.escortConvoy.maxHp);
+        ctx.fillStyle = 'rgba(7, 11, 24, 0.8)';
+        ctx.fillRect(cp.x - barW / 2 - 1, cp.y - 1, barW + 2, 7);
+        ctx.fillStyle = '#54F2A8';
+        ctx.fillRect(cp.x - barW / 2, cp.y, barW * ratio, 5);
+      }
+    }
+
+    // Offscreen directional threat chevrons for offscreen alive enemies
+    if (this.mode === 'playing') {
+      const cxV = w * 0.5;
+      const cyV = h * 0.5;
+      for (const enemy of this.enemies) {
+        if (!enemy.alive) continue;
+        const sp = this.projectToScreen(enemy.x, 3.0, enemy.z);
+        if (sp.visible && sp.x >= 24 && sp.x <= w - 24 && sp.y >= 96 && sp.y <= h - 108) {
+          continue;
+        }
+        const dx = sp.visible ? sp.x - cxV : -(sp.x - cxV);
+        const dy = sp.visible ? sp.y - cyV : -(sp.y - cyV);
+        const ang = Math.atan2(dy, dx);
+        const rx = Math.max(34, Math.min(w - 34, cxV + Math.cos(ang) * (w * 0.44)));
+        const ry = Math.max(106, Math.min(h - 114, cyV + Math.sin(ang) * (h * 0.39)));
+        ctx.save();
+        ctx.translate(rx, ry);
+        ctx.rotate(ang);
+        ctx.fillStyle = enemy.isBoss ? 'rgba(255, 184, 77, 0.88)' : 'rgba(255, 86, 68, 0.78)';
+        ctx.beginPath();
+        ctx.moveTo(8, 0);
+        ctx.lineTo(-5, -5);
+        ctx.lineTo(-2, 0);
+        ctx.lineTo(-5, 5);
+        ctx.closePath();
+        ctx.fill();
+        ctx.restore();
+      }
     }
 
     ctx.textAlign = 'center';
@@ -6925,6 +7881,37 @@ export class NavalGymScene {
       ctx.stroke();
     }
 
+    // Treasure X spot on radar
+    if (this.treasureSpot && !this.treasureSpot.collected) {
+      const tx = cx + this.treasureSpot.x * scale;
+      const ty = cy + this.treasureSpot.z * scale;
+      ctx.strokeStyle = '#FFE082';
+      ctx.lineWidth = 1.6;
+      ctx.beginPath();
+      ctx.moveTo(tx - 3.2, ty - 3.2);
+      ctx.lineTo(tx + 3.2, ty + 3.2);
+      ctx.moveTo(tx + 3.2, ty - 3.2);
+      ctx.lineTo(tx - 3.2, ty + 3.2);
+      ctx.stroke();
+    }
+
+    // Escort Convoy Brig (emerald-white diamond badge)
+    if (this.escortConvoy && this.escortConvoy.alive) {
+      const ex = cx + this.escortConvoy.x * scale;
+      const ey = cy + this.escortConvoy.z * scale;
+      ctx.fillStyle = '#54F2A8';
+      ctx.strokeStyle = '#FFF7E6';
+      ctx.lineWidth = 1.2;
+      ctx.beginPath();
+      ctx.moveTo(ex, ey - 3.8);
+      ctx.lineTo(ex + 3.2, ey);
+      ctx.lineTo(ex, ey + 3.8);
+      ctx.lineTo(ex - 3.2, ey);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+    }
+
     // Mortar warning rings on radar
     ctx.strokeStyle = 'rgba(217, 140, 255, 0.85)';
     ctx.lineWidth = 1.2;
@@ -7155,6 +8142,16 @@ export class NavalGymScene {
         : null,
       surgeonActive: this.activeOfficers.includes('surgeon'),
       equippedCrest: this.equippedCrest,
+      activeRelics: [...this.activeRelics],
+      activeMutators: [...this.activeMutators],
+      routeChoices: [...this.routeChoices],
+      mutatorChoices: [...this.mutatorChoices],
+      convoyHp: this.escortConvoy?.alive ? Math.max(0, Math.round(this.escortConvoy.hp)) : null,
+      convoyMaxHp: this.escortConvoy?.alive ? this.escortConvoy.maxHp : null,
+      treasureDistMeters:
+        this.treasureSpot && !this.treasureSpot.collected
+          ? Math.round(Math.hypot(this.treasureSpot.x - this.ship.x, this.treasureSpot.z - this.ship.z))
+          : null,
     });
   }
 
@@ -7209,6 +8206,9 @@ export class NavalGymScene {
     for (const m of this.sharedSplinterMats) m.dispose();
     for (const m of this.sharedBurstMats.values()) m.dispose();
     for (const m of this.sharedBallMats.values()) m.dispose();
+    for (const sp of this.smokePuffPool) sp.mat.dispose();
+    this.smokePuffPool = [];
+    this.particlePool = [];
     this.envTexture?.dispose();
     this.envTexture = null;
     this.audio.dispose();

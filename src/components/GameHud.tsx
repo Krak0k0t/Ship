@@ -53,6 +53,11 @@ import {
   dispatchSparkBurst,
   getCrossedBossThresholds,
 } from '../game/uiEffects';
+import {
+  RUN_RELIC_SPECS,
+  type EndlessMutatorId,
+  type RunRelicId,
+} from '../game/voyageSystems';
 import { HARPOON_COOLDOWN_SEC, SMOKE_COOLDOWN_SEC } from '../game/abilities';
 import type { HudSnapshot } from '../scene/NavalGymScene';
 import { BrassCorners } from './BrassCorners';
@@ -133,6 +138,24 @@ export const GameHud: React.FC<GameHudProps> = ({
     beam: t.pointBeam,
     broad: t.pointBroad,
     run: t.pointRun,
+  };
+
+  const relicLabels: Record<RunRelicId, { name: string; desc: string }> = {
+    stormCompass: { name: et.relicStormCompassName, desc: et.relicStormCompassDesc },
+    alchemistPowder: { name: et.relicAlchemistPowderName, desc: et.relicAlchemistPowderDesc },
+    vampiricTimber: { name: et.relicVampiricTimberName, desc: et.relicVampiricTimberDesc },
+    thunderRod: { name: et.relicThunderRodName, desc: et.relicThunderRodDesc },
+    corsairBounty: { name: et.relicCorsairBountyName, desc: et.relicCorsairBountyDesc },
+    ironKeel: { name: et.relicIronKeelName, desc: et.relicIronKeelDesc },
+    phantomSails: { name: et.relicPhantomSailsName, desc: et.relicPhantomSailsDesc },
+    cursedLedger: { name: et.relicCursedLedgerName, desc: et.relicCursedLedgerDesc },
+  };
+
+  const mutatorLabels: Record<EndlessMutatorId, { name: string; desc: string }> = {
+    galeForce: { name: et.mutatorGaleName, desc: et.mutatorGaleDesc },
+    glassPowder: { name: et.mutatorGlassName, desc: et.mutatorGlassDesc },
+    goldenTide: { name: et.mutatorGoldenName, desc: et.mutatorGoldenDesc },
+    lightningSea: { name: et.mutatorLightningName, desc: et.mutatorLightningDesc },
   };
 
   const sailPct = `${Math.round(hud.sailLevel * 100)}%`;
@@ -355,9 +378,10 @@ export const GameHud: React.FC<GameHudProps> = ({
       {/* Top Group: Row + Chronometer Tape + Optional Boss Banner */}
       <div className="landscape-hud-top flex flex-col gap-1.5">
         <div className="landscape-hud-top flex flex-wrap items-start justify-between gap-2 xl:flex-nowrap">
-          {/* Top-Left Compass + Speed + Hull + Sails (+ Combo Streak) */}
-          <div className="flex shrink-0 flex-wrap items-center gap-2">
-            <div className="landscape-hud-card pointer-events-auto glass-obsidian animate-panel-in flex items-center gap-2.5 rounded-2xl px-3 py-2 sm:gap-3 sm:px-3.5 sm:py-2.5">
+          {/* Top-Left Compass + Speed + Hull + Sails (+ Combo Streak + Run Relics/Mutators) */}
+          <div className="flex shrink-0 flex-col items-start gap-1.5">
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="landscape-hud-card pointer-events-auto glass-obsidian animate-panel-in flex items-center gap-2.5 rounded-2xl px-3 py-2 sm:gap-3 sm:px-3.5 sm:py-2.5">
           <svg
             width="42"
             height="42"
@@ -495,7 +519,61 @@ export const GameHud: React.FC<GameHudProps> = ({
               </div>
             </div>
           )}
-        </div>
+            </div>
+
+            {(hud.activeRelics.length > 0 || hud.activeMutators.length > 0) && (
+              <div
+                data-testid="hud-relics-mutators-strip"
+                className="landscape-hide pointer-events-auto flex max-w-[390px] flex-wrap items-center gap-1"
+              >
+                {hud.activeRelics.map((relicId) => {
+                  const accent = RUN_RELIC_SPECS[relicId]?.accent ?? 'gold';
+                  const chipStyle =
+                    accent === 'crimson'
+                      ? 'border-[#FF7B54]/55 bg-[#2A1014]/90 text-[#FFB48A]'
+                      : accent === 'azure'
+                        ? 'border-[#7BE0FF]/55 bg-[#0D2138]/90 text-[#9CE6FF]'
+                        : accent === 'emerald'
+                          ? 'border-emerald-400/55 bg-[#0D2620]/90 text-emerald-300'
+                          : accent === 'violet'
+                            ? 'border-[#C77DFF]/55 bg-[#201235]/90 text-[#E0B3FF]'
+                            : 'border-[#FFD27D]/55 bg-[#251C0E]/90 text-[#FFE082]';
+                  return (
+                    <div
+                      key={relicId}
+                      data-testid={`hud-relic-${relicId}`}
+                      className={`hud-tip-host flex items-center gap-1 rounded-lg border px-2 py-0.5 text-[10px] font-extrabold shadow-[0_4px_12px_rgba(2,5,16,0.55)] ${chipStyle}`}
+                    >
+                      <Sparkles className="h-2.5 w-2.5 shrink-0" />
+                      <span>{relicLabels[relicId].name}</span>
+                      <span
+                        className="hud-tooltip"
+                        style={{ bottom: 'auto', top: 'calc(100% + 6px)' }}
+                      >
+                        {et.hudRelicsLabel}: {relicLabels[relicId].desc}
+                      </span>
+                    </div>
+                  );
+                })}
+                {hud.activeMutators.map((mutId) => (
+                  <div
+                    key={mutId}
+                    data-testid={`hud-mutator-${mutId}`}
+                    className="hud-tip-host flex items-center gap-1 rounded-lg border border-[#C77DFF]/55 bg-[#1D0F30]/92 px-2 py-0.5 text-[10px] font-extrabold text-[#E5C2FF] shadow-[0_4px_12px_rgba(2,5,16,0.55)]"
+                  >
+                    <Zap className="h-2.5 w-2.5 shrink-0 text-[#D99BFF]" />
+                    <span>{mutatorLabels[mutId].name}</span>
+                    <span
+                      className="hud-tooltip"
+                      style={{ bottom: 'auto', top: 'calc(100% + 6px)' }}
+                    >
+                      {mutatorLabels[mutId].desc}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
 
         {/* Top-Right Wind Compass, Telemetry & System Actions */}
         <div className="landscape-hud-top pointer-events-auto flex w-full flex-wrap items-center justify-between gap-1.5 sm:w-auto sm:justify-end xl:flex-nowrap">
@@ -851,24 +929,69 @@ export const GameHud: React.FC<GameHudProps> = ({
       </div>
     </div>
 
-      {/* Plotted Course Waypoint Distance Pill (Desktop, positioned cleanly above tactical radar) */}
-      {hud.waypointDistMeters !== null && (
-        <div
-          data-testid="hud-waypoint-pill"
-          className="pointer-events-auto fixed bottom-[126px] left-4 z-20 hidden items-center gap-2 rounded-xl border border-[#FFD27D]/55 bg-[#090E24]/92 px-3 py-1.5 text-xs font-extrabold text-[#FFE082] shadow-[0_8px_22px_rgba(2,5,16,0.72)] md:flex"
-        >
-          <MapPin className="h-3.5 w-3.5 text-[#FFD27D]" />
-          <span className="font-mono-num">
-            {et.waypointDistLabel}: {hud.waypointDistMeters}m
-          </span>
-          <button
-            type="button"
-            aria-label="Clear waypoint"
-            onClick={onClearWaypoint}
-            className="btn-premium ml-0.5 cursor-pointer rounded p-0.5 text-[#D8D0C2] hover:bg-white/10 hover:text-white"
-          >
-            <X className="h-3 w-3" />
-          </button>
+      {/* Left-Bottom Tactical Stack above Radar: Escort Convoy HP, Treasure X Mark, Waypoint Pill */}
+      {(hud.waypointDistMeters !== null ||
+        hud.treasureDistMeters !== null ||
+        (hud.convoyHp !== null && hud.convoyMaxHp !== null)) && (
+        <div className="pointer-events-none fixed bottom-[126px] left-4 z-20 hidden flex-col items-start gap-1.5 md:flex">
+          {hud.convoyHp !== null && hud.convoyMaxHp !== null && (
+            <div
+              data-testid="hud-convoy-pill"
+              className="flex min-w-[172px] flex-col gap-1 rounded-xl border border-emerald-400/55 bg-[#08151A]/92 px-3 py-1.5 text-xs font-extrabold text-emerald-200 shadow-[0_8px_22px_rgba(2,5,16,0.72)]"
+            >
+              <div className="flex items-center justify-between gap-2 text-[11px]">
+                <span className="inline-flex items-center gap-1 text-emerald-300">
+                  <Store className="h-3.5 w-3.5" />
+                  {et.convoyHpLabel}
+                </span>
+                <span className="font-mono-num text-[#E8FFF5]">
+                  {Math.max(0, Math.round(hud.convoyHp))}/{Math.round(hud.convoyMaxHp)}
+                </span>
+              </div>
+              <div className="h-1.5 w-full overflow-hidden rounded-full bg-[#060C12]">
+                <div
+                  className="h-full rounded-full bg-gradient-to-r from-emerald-500 to-teal-300 transition-all duration-150"
+                  style={{
+                    width: `${Math.max(0, Math.min(100, (hud.convoyHp / Math.max(1, hud.convoyMaxHp)) * 100))}%`,
+                  }}
+                />
+              </div>
+            </div>
+          )}
+
+          {hud.treasureDistMeters !== null && (
+            <div
+              data-testid="hud-treasure-pill"
+              className="flex items-center gap-2 rounded-xl border border-[#FFD27D]/60 bg-[#1B1409]/92 px-3 py-1.5 text-xs font-extrabold text-[#FFE082] shadow-[0_8px_22px_rgba(2,5,16,0.72)]"
+            >
+              <span className="inline-flex h-4 w-4 items-center justify-center rounded bg-[#FFD27D]/20 text-[10px] font-black text-[#FFD27D]">
+                X
+              </span>
+              <span className="font-mono-num">
+                {et.treasureDistLabel}: {hud.treasureDistMeters}m
+              </span>
+            </div>
+          )}
+
+          {hud.waypointDistMeters !== null && (
+            <div
+              data-testid="hud-waypoint-pill"
+              className="pointer-events-auto flex items-center gap-2 rounded-xl border border-[#FFD27D]/55 bg-[#090E24]/92 px-3 py-1.5 text-xs font-extrabold text-[#FFE082] shadow-[0_8px_22px_rgba(2,5,16,0.72)]"
+            >
+              <MapPin className="h-3.5 w-3.5 text-[#FFD27D]" />
+              <span className="font-mono-num">
+                {et.waypointDistLabel}: {hud.waypointDistMeters}m
+              </span>
+              <button
+                type="button"
+                aria-label="Clear waypoint"
+                onClick={onClearWaypoint}
+                className="btn-premium ml-0.5 cursor-pointer rounded p-0.5 text-[#D8D0C2] hover:bg-white/10 hover:text-white"
+              >
+                <X className="h-3 w-3" />
+              </button>
+            </div>
+          )}
         </div>
       )}
 
@@ -958,9 +1081,11 @@ export const GameHud: React.FC<GameHudProps> = ({
               ? 'border-[#FF7B54]/45 text-[#FFE0C4]'
               : hud.calloutSpeaker === 'bosun'
                 ? 'border-emerald-400/45 text-[#CFFFE8]'
-                : hud.calloutSpeaker === 'navigator'
-                  ? 'border-[#7BE0FF]/45 text-[#D2F4FF]'
-                  : 'text-[#F4C97A]'
+                : hud.calloutSpeaker === 'surgeon'
+                  ? 'border-emerald-400/55 text-[#D4FFEB]'
+                  : hud.calloutSpeaker === 'navigator'
+                    ? 'border-[#7BE0FF]/45 text-[#D2F4FF]'
+                    : 'text-[#F4C97A]'
           }`}
         >
           {hud.calloutSpeaker && (
@@ -971,13 +1096,17 @@ export const GameHud: React.FC<GameHudProps> = ({
                   ? 'border-[#FF7B54]/50 bg-[#4A1814]/80 text-[#FFB48A]'
                   : hud.calloutSpeaker === 'bosun'
                     ? 'border-emerald-400/50 bg-[#0F3526]/80 text-emerald-300'
-                    : 'border-[#7BE0FF]/50 bg-[#102B4A]/80 text-[#8CE2FF]'
+                    : hud.calloutSpeaker === 'surgeon'
+                      ? 'border-emerald-300/55 bg-[#0C332B]/85 text-emerald-200'
+                      : 'border-[#7BE0FF]/50 bg-[#102B4A]/80 text-[#8CE2FF]'
               }`}
             >
               {hud.calloutSpeaker === 'gunner' ? (
                 <Crosshair className="h-3 w-3" />
               ) : hud.calloutSpeaker === 'bosun' ? (
                 <Coins className="h-3 w-3" />
+              ) : hud.calloutSpeaker === 'surgeon' ? (
+                <HeartPulse className="h-3 w-3" />
               ) : (
                 <Compass className="h-3 w-3" />
               )}
@@ -986,7 +1115,9 @@ export const GameHud: React.FC<GameHudProps> = ({
                   ? t.officerGunnerName
                   : hud.calloutSpeaker === 'bosun'
                     ? t.officerBosunName
-                    : t.officerNavName}
+                    : hud.calloutSpeaker === 'surgeon'
+                      ? et.officerSurgeonName
+                      : t.officerNavName}
               </span>
             </span>
           )}

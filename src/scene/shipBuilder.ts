@@ -46,6 +46,7 @@ export interface BuiltShip {
   setBossEnraged?: (enraged: boolean) => void;
   setHitFlash?: (amount: number) => void;
   setTelegraphFlash?: (amount: number) => void;
+  setHullDamageRatio?: (ratio: number) => void;
   setAbilityVfx: (opts: { smokeActive: boolean; stormWakeActive: boolean }) => void;
   updateAnimation: (time: number, squashY: number, speed: number) => void;
 }
@@ -905,6 +906,10 @@ export function buildCorsairShip(
   let activeSailColor = baseSailColor;
   let activeSailEmissive = baseSailEmissive;
   let currentLanternHex = lanternHex;
+  let hullDamageRatio = 1;
+  const baseHullTint = new THREE.Color(0xffffff);
+  const scorchedHullTint = new THREE.Color(0x5d453b);
+  const sailColorScratch = new THREE.Color();
 
   return {
     root,
@@ -923,6 +928,15 @@ export function buildCorsairShip(
     },
     setCrestGlow(active: boolean) {
       crestActive = active;
+    },
+    setHullDamageRatio(ratio: number) {
+      hullDamageRatio = Math.max(0, Math.min(1, ratio));
+      const wear = Math.max(0, Math.min(1, (0.78 - hullDamageRatio) / 0.78));
+      hullMat.color.copy(baseHullTint).lerp(scorchedHullTint, wear * 0.65);
+      if (!sailDamaged) {
+        sailColorScratch.setHex(activeSailColor).lerp(scorchedHullTint, wear * 0.42);
+        sailMat.color.copy(sailColorScratch);
+      }
     },
     setBossEnraged(enraged: boolean) {
       bossEnraged = enraged;
@@ -945,7 +959,9 @@ export function buildCorsairShip(
       activeSailEmissive = spec.sailEmissiveHex;
       currentLanternHex = spec.lanternHex;
       if (!sailDamaged) {
-        sailMat.color.setHex(activeSailColor);
+        const wear = Math.max(0, Math.min(1, (0.78 - hullDamageRatio) / 0.78));
+        sailColorScratch.setHex(activeSailColor).lerp(scorchedHullTint, wear * 0.42);
+        sailMat.color.copy(sailColorScratch);
         sailMat.emissive.setHex(activeSailEmissive);
       }
       brassMat.color.setHex(spec.trimHex);
@@ -1020,7 +1036,9 @@ export function buildCorsairShip(
         sailMat.emissive.setHex(0x1f222d);
         sailMat.emissiveIntensity = 0.18;
       } else {
-        sailMat.color.setHex(activeSailColor);
+        const wear = Math.max(0, Math.min(1, (0.78 - hullDamageRatio) / 0.78));
+        sailColorScratch.setHex(activeSailColor).lerp(scorchedHullTint, wear * 0.42);
+        sailMat.color.copy(sailColorScratch);
         sailMat.emissive.setHex(activeSailEmissive);
         sailMat.emissiveIntensity = isBoss ? (bossEnraged ? 0.62 : 0.42) : 0.24;
       }
@@ -1028,17 +1046,23 @@ export function buildCorsairShip(
     updateAnimation(time: number, squashY: number, speed: number) {
       const xz = 1 / Math.sqrt(Math.max(0.65, squashY));
       visualBody.scale.set(scale * xz, scale * squashY, scale * xz);
+      // Subtle permanent list when hull heavily damaged
+      const damageList = hullDamageRatio < 0.45 ? (0.45 - hullDamageRatio) * 0.28 : 0;
+      visualBody.rotation.z = damageList;
 
       const sailScaleY = 0.22 + currentSail * 0.82;
-      const sailBreathe = 1 + Math.sin(time * 2.6 + (isEnemy ? 1.3 : 0)) * (0.025 + speed * 0.002);
+      const flutter = Math.sin(time * (4.4 + speed * 0.12) + (isEnemy ? 2.1 : 0)) * (0.018 + currentSail * 0.025);
+      const sailBreathe = 1 + Math.sin(time * 2.6 + (isEnemy ? 1.3 : 0)) * (0.028 + speed * 0.0024);
       const tearSkew = sailDamaged ? 0.74 + Math.sin(time * 13) * 0.09 : 1;
-      sailMesh.scale.set(sailDamaged ? 0.88 : 1, sailScaleY * tearSkew, sailBreathe);
+      sailMesh.scale.set(sailDamaged ? 0.88 : 1 + flutter * 0.35, sailScaleY * tearSkew, sailBreathe);
       sailMesh.position.y = 5.25 - 1.55 * sailScaleY;
-      sailMesh.rotation.z = sailDamaged ? Math.sin(time * 9.5) * 0.14 : 0;
+      sailMesh.rotation.z = sailDamaged ? Math.sin(time * 9.5) * 0.14 : flutter * 0.45;
+      sailMesh.rotation.y = Math.sin(time * 3.1 + (isEnemy ? 1.1 : 0)) * (0.022 + currentSail * 0.024);
 
       for (const es of extraSailMeshes) {
-        es.scale.set(sailDamaged ? 0.88 : 1, sailScaleY * tearSkew, sailBreathe);
-        es.rotation.z = sailDamaged ? -Math.sin(time * 9.5) * 0.12 : 0;
+        es.scale.set(sailDamaged ? 0.88 : 1 - flutter * 0.3, sailScaleY * tearSkew, sailBreathe);
+        es.rotation.z = sailDamaged ? -Math.sin(time * 9.5) * 0.12 : -flutter * 0.35;
+        es.rotation.y = -sailMesh.rotation.y * 0.8;
       }
 
       pennantMesh.rotation.y = Math.sin(time * 5.2) * 0.22;
@@ -1302,14 +1326,14 @@ export function buildEngravedHeadland(x: number, z: number, withLighthouse: bool
     group.add(finial);
 
     beaconGroup.position.set(0, 18.35, 0);
-    const beamGeo = new THREE.ConeGeometry(8.8, 44, 24, 1, true);
-    beamGeo.translate(0, -22, 0);
+    const beamGeo = new THREE.ConeGeometry(10.5, 52, 24, 1, true);
+    beamGeo.translate(0, -26, 0);
     beamGeo.rotateX(Math.PI / 2);
     const beamMat = new THREE.MeshBasicMaterial({
       color: 0xffd27d,
       map: createBeamGradientTexture(),
       transparent: true,
-      opacity: 0.32,
+      opacity: 0.44,
       side: THREE.DoubleSide,
       depthWrite: false,
       blending: THREE.AdditiveBlending,
@@ -1663,7 +1687,7 @@ export function buildTwilightParallaxEnvironment(): ParallaxEnvironment {
   };
 }
 
-export type FloatingPropKind = 'repair' | 'powder' | 'gold' | 'barrel';
+export type FloatingPropKind = 'repair' | 'powder' | 'gold' | 'barrel' | 'bottle';
 
 export interface BuiltFloatingProp {
   group: THREE.Group;
@@ -1702,7 +1726,45 @@ export function buildFloatingProp(kind: FloatingPropKind): BuiltFloatingProp {
     metalness: 0.82,
   });
 
-  if (kind === 'barrel') {
+  if (kind === 'bottle') {
+    glowInner = 'rgba(92, 232, 216, 0.88)';
+    glowOuter = 'rgba(255, 210, 125, 0.34)';
+
+    const glassMat = new THREE.MeshPhysicalMaterial({
+      color: 0x3ad4b4,
+      emissive: 0x16806e,
+      emissiveIntensity: 0.65,
+      roughness: 0.14,
+      metalness: 0.08,
+      transparent: true,
+      opacity: 0.82,
+    });
+    const body = new THREE.Mesh(new THREE.CylinderGeometry(0.42, 0.46, 1.35, 10), glassMat);
+    body.position.y = 0.85;
+    body.rotation.z = 0.34;
+    bodyGroup.add(body);
+
+    const neck = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.28, 0.55, 8), glassMat);
+    neck.position.set(-0.28, 1.62, 0);
+    neck.rotation.z = 0.34;
+    bodyGroup.add(neck);
+
+    const scroll = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.16, 0.16, 0.85, 8),
+      new THREE.MeshBasicMaterial({ color: 0xffe4a0 }),
+    );
+    scroll.position.y = 0.88;
+    scroll.rotation.z = 0.34;
+    bodyGroup.add(scroll);
+
+    const cork = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.14, 0.12, 0.24, 8),
+      new THREE.MeshStandardMaterial({ color: 0xa4713e, roughness: 0.85 }),
+    );
+    cork.position.set(-0.39, 1.9, 0);
+    cork.rotation.z = 0.34;
+    bodyGroup.add(cork);
+  } else if (kind === 'barrel') {
     glowInner = 'rgba(255, 118, 86, 0.78)';
     glowOuter = 'rgba(220, 44, 30, 0.24)';
 

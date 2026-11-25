@@ -41,9 +41,13 @@ export const LORE_SEAS: LoreSeaSpec[] = [
 
 export interface OfficerDossierSpec {
   officerId: OfficerId;
-  nameKey: 'officerGunnerName' | 'officerBosunName' | 'officerNavName';
-  descKey: 'officerGunnerDesc' | 'officerBosunDesc' | 'officerNavDesc';
-  loreKey: 'chronicleOfficerVaneLore' | 'chronicleOfficerKlaraLore' | 'chronicleOfficerSorenLore';
+  nameKey: 'officerGunnerName' | 'officerBosunName' | 'officerNavName' | 'officerSurgeonName';
+  descKey: 'officerGunnerDesc' | 'officerBosunDesc' | 'officerNavDesc' | 'officerSurgeonDesc';
+  loreKey:
+    | 'chronicleOfficerVaneLore'
+    | 'chronicleOfficerKlaraLore'
+    | 'chronicleOfficerSorenLore'
+    | 'chronicleOfficerSurgeonLore';
 }
 
 export const OFFICER_DOSSIERS: OfficerDossierSpec[] = [
@@ -64,6 +68,12 @@ export const OFFICER_DOSSIERS: OfficerDossierSpec[] = [
     nameKey: 'officerNavName',
     descKey: 'officerNavDesc',
     loreKey: 'chronicleOfficerSorenLore',
+  },
+  {
+    officerId: 'surgeon',
+    nameKey: 'officerSurgeonName',
+    descKey: 'officerSurgeonDesc',
+    loreKey: 'chronicleOfficerSurgeonLore',
   },
 ];
 

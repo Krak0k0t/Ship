@@ -251,8 +251,12 @@ export function stepShipState(
   const rudderTarget = Math.max(-1, Math.min(1, controls.steer));
   const rudder = ship.rudder + (rudderTarget - ship.rudder) * Math.min(1, dt * 8);
 
+  const clubhaulActive = ship.sailLevel === 0 && Math.abs(rudder) > 0.1 && ship.speed > 2.2;
+  const clubhaulMult = clubhaulActive ? 1.48 : 1.0;
   const speedFactor = 0.45 + Math.min(1, ship.speed / 12) * 0.55;
-  const heading = normalizeAngle(ship.heading - rudder * sea.turnSpeed * turnMult * speedFactor * dt);
+  const heading = normalizeAngle(
+    ship.heading - rudder * sea.turnSpeed * turnMult * clubhaulMult * speedFactor * dt,
+  );
 
   const { efficiency } = computeWindEfficiency(heading, sea.windAngle, headwindBoost);
   const targetSpeed =
@@ -274,7 +278,7 @@ export function stepShipState(
   const pitch = ship.pitch + (pitchTarget - ship.pitch) * Math.min(1, dt * 6);
 
   const windSide = Math.sin(normalizeAngle(sea.windAngle - heading));
-  const turnBank = -rudder * Math.min(1, speed / 9) * 0.18;
+  const turnBank = -rudder * Math.min(1, speed / 9) * (clubhaulActive ? 0.25 : 0.18);
   const waveBobRoll = Math.cos(time * 1.65 + z * 0.04) * 0.032;
   const heelTarget =
     windSide * ship.sailLevel * 0.14 + (hStarboard - hCenter) * 0.14 + turnBank + waveBobRoll;
@@ -809,4 +813,18 @@ export function computeRockfallSplash(
   return Math.round(maxDamage * factor);
 }
 
+export function computeRakingShotMultiplier(
+  projVx: number,
+  projVz: number,
+  targetHeading: number,
+): number {
+  const len = Math.hypot(projVx, projVz);
+  if (len < 0.01) return 1.0;
+  const nx = projVx / len;
+  const nz = projVz / len;
+  const fwdX = Math.sin(targetHeading);
+  const fwdZ = -Math.cos(targetHeading);
+  const alignment = Math.abs(nx * fwdX + nz * fwdZ);
+  return alignment >= 0.72 ? 1.55 : 1.0;
+}
 
